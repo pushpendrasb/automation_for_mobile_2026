@@ -1,27 +1,29 @@
 /**
  * Vet Practice New Request (NewPrescription.js).
+ * Every tap uses testID — no screen width/height.
+ *
  * Step 1: Vet Practice, Remedy Store to Dispense, Branch, Next
  * Step 2: Animal Category/ Type, identification, Treatment/Product Request, Submit Request
  */
 const { ui } = require('./ui');
 const { providerData } = require('../data/providerData');
-const { requestTreatmentData, categoryByKey } = require('../data/animalCategories');
+const { categoryByKey } = require('../data/animalCategories');
+const { TEST_IDS } = require('../data/testIds');
 const RemedyStoreModalPage = require('./RemedyStoreModalPage');
 const SelectVetPopupPage = require('./SelectVetPopupPage');
 const SelectBranchPopupPage = require('./SelectBranchPopupPage');
-const CatPopupPage = require('./CatPopupPage');
 
 class VetPracticeFormPage {
   async assertStep1() {
-    await ui.waitVisible(
-      () => ui.byExactText(requestTreatmentData.labels.newRequest),
-      20000,
-      'New Request (Vet Practice) not displayed',
-    );
-    await ui.waitVisible(
-      () => ui.byContainsText('New prescription request'),
-      10000,
-      'Vet Practice step 1 hero not displayed',
+    await browser.waitUntil(
+      async () =>
+        Boolean(await ui.firstByTestId(TEST_IDS.requestTreatment.vetPracticeField)),
+      {
+        timeout: 20000,
+        interval: 200,
+        timeoutMsg:
+          'New Request (rt.vetPractice.field) not displayed — rebuild/reinstall the Vet Pal app',
+      },
     );
   }
 
@@ -37,21 +39,31 @@ class VetPracticeFormPage {
     index = providerData.vetPracticeIndex,
   ) {
     const name = String(practiceName || '').trim();
-    if (await SelectVetPopupPage.isPracticeAlreadyOnForm(name)) {
-      ui.log('Provider', 'Vet Practice already filled (one subscribed vet) — skip popup');
-      return;
-    }
     ui.log(
       'Provider',
       `Vet Practice popup name="${name || '(none)'}" row=${index}`,
     );
+    const requested =
+      Number.isFinite(Number(index)) && Number(index) >= 0 ? Number(index) : 0;
+    const picked = await ui.pickFromSheet({
+      openId: TEST_IDS.requestTreatment.vetPracticeField,
+      rowId: TEST_IDS.vetPracticePopup.row(requested),
+      saveId: TEST_IDS.vetPracticePopup.save,
+    });
+    if (picked) {
+      return;
+    }
+    if (await ui.firstByTestId(TEST_IDS.requestTreatment.vetPracticeField)) {
+      ui.log('Provider', 'Vet Practice field present — popup did not open (auto-filled)');
+      return;
+    }
     await SelectVetPopupPage.openFromForm();
-    await SelectVetPopupPage.selectRowAndSave(name, index);
+    await SelectVetPopupPage.selectRowAndSave(name, requested);
   }
 
   /**
    * Index 0 + name → search then first card. Index > 0 → full list, no search.
-   * Skip when the field already shows the store name.
+   * Skip when the field already shows the store name (modal does not open).
    * @param {string} [storeName]
    * @param {number} [index]
    */
@@ -60,32 +72,56 @@ class VetPracticeFormPage {
     index = providerData.remedyStoreIndex,
   ) {
     const name = String(storeName || '').trim();
-    if (name && (await RemedyStoreModalPage.isStoreAlreadyOnForm(name))) {
-      ui.log('Provider', `Remedy store already "${name}" — skip modal`);
-      return;
-    }
+    const requested =
+      Number.isFinite(Number(index)) && Number(index) >= 0 ? Number(index) : 0;
     ui.log(
       'Provider',
-      `Remedy store search="${name || '(none)'}" card=${index}`,
+      `Remedy store search="${name || '(none)'}" card=${requested}`,
     );
-    await RemedyStoreModalPage.openFromForm();
-    await RemedyStoreModalPage.searchSelectAndSave(name, index);
+    const picked = await ui.pickFromSheet({
+      openId: TEST_IDS.requestTreatment.remedyStoreField,
+      rowId: TEST_IDS.remedyStoreModal.card(requested),
+      saveId: TEST_IDS.remedyStoreModal.save,
+    });
+    if (picked) {
+      return;
+    }
+    if (requested === 0 && name) {
+      await RemedyStoreModalPage.openFromForm();
+      await RemedyStoreModalPage.searchSelectAndSave(name, requested);
+      return;
+    }
+    if (await ui.firstByTestId(TEST_IDS.requestTreatment.remedyStoreField)) {
+      ui.log('Provider', 'Remedy Store field present — modal did not open (already filled)');
+      return;
+    }
+    throw new Error(
+      'rt.remedyStore.field not found — rebuild/reinstall the Vet Pal app',
+    );
   }
 
   /**
    * After a store is chosen: tap **Select Branch** when several branches
-   * exist, then pick `BRANCH_INDEX` (default 0) and Save — same pattern as
-   * the store modal. One branch auto-fills on tap (no sheet).
-   *
-   * Never skip because "Select Branch" is missing from the iOS tree; RN
-   * often hides that placeholder while the field is still empty.
-   *
+   * exist, then pick `BRANCH_INDEX` (default 0) and Save.
+   * One branch auto-fills on tap (no sheet).
    * @param {number} [index]
    */
   async selectBranch(index = providerData.branchIndex) {
     const requested =
       Number.isFinite(Number(index)) && Number(index) >= 0 ? Number(index) : 0;
     ui.log('Provider', `Branch popup row=${requested}`);
+    const picked = await ui.pickFromSheet({
+      openId: TEST_IDS.requestTreatment.branchField,
+      rowId: TEST_IDS.catPopup.row(requested),
+      saveId: TEST_IDS.catPopup.save,
+    });
+    if (picked) {
+      return;
+    }
+    if (await ui.firstByTestId(TEST_IDS.requestTreatment.branchField)) {
+      ui.log('Provider', 'No Branch popup after tap — one branch auto-filled');
+      return;
+    }
     await SelectBranchPopupPage.selectAndSave(requested);
   }
 
@@ -98,196 +134,98 @@ class VetPracticeFormPage {
   }
 
   /**
-   * Next sits in the absolute footer (height 52, paddingBottom safeArea+10).
-   * Do not search inside the ScrollView.
+   * Next is `rt.next` in the fixed footer.
    * Next without vet/branch stays on step 1 — fill those and retry once.
    */
   async clickNext() {
-    ui.log('Request Treatment', 'Next (fixed footer)');
-    await this.#tapFooterCta();
-    await browser.pause(250);
+    ui.log('Request Treatment', 'Next (rt.next)');
+    await ui.requireTapTestId(TEST_IDS.requestTreatment.next);
+    if (
+      await ui.waitTrue(
+        () => ui.firstByTestId(TEST_IDS.requestTreatment.animalCategoryField),
+        1500,
+        80,
+      )
+    ) {
+      return;
+    }
     if (await this.#vetSelectStillShowing()) {
       ui.log('Provider', 'Vet Practice still Select — open popup then Next');
       await this.selectVetPractice();
-      await this.#tapFooterCta();
-      await browser.pause(250);
-    }
-    if (await ui.saveExists()) {
-      ui.log('Provider', 'Sheet still open after Next — row + Save');
-      await SelectBranchPopupPage.selectAndSave(providerData.branchIndex);
-      await this.#tapFooterCta();
-      await browser.pause(250);
+      await ui.requireTapTestId(TEST_IDS.requestTreatment.next);
     }
   }
 
   /**
-   * Step 2 title is "Animal Category/ Type". Slash in NSPredicate is unsafe
-   * — match "Animal Category" via $$ (no findElement throw spam).
+   * Step 2 title is "Animal Category/ Type". Wait for the field ID.
    */
   async assertAnimalCategoryScreen() {
     await browser.waitUntil(
       async () =>
-        Boolean(
-          (await ui.firstCaptionContains('Animal Category')) ||
-            (await ui.firstUsableContains('Animal Category')),
-        ),
+        Boolean(await ui.firstByTestId(TEST_IDS.requestTreatment.animalCategoryField)),
       {
         timeout: 12000,
         interval: 200,
-        timeoutMsg: 'Animal Category/ Type screen not displayed',
+        timeoutMsg:
+          'Animal Category field (rt.animalCategory.field) not displayed',
       },
     );
   }
 
   /**
-   * CatPopup.js: tap the category row (Horse = first), then Save.
-   * Row labels are not in the iOS tree — do not wait for "Horse".
+   * CatPopup: tap the category row (Horse = first), then Save.
+   * @param {string} categoryKey
    */
   async selectAnimalCategory(categoryKey) {
     const cat = categoryByKey(categoryKey);
     const row = Number(cat.pickerRowIndex || 0);
     ui.log('Animal', `Category row ${row} (${cat.key})`);
-
-    const field =
-      (await ui.firstCaptionContains('Please select animal category')) ||
-      (await ui.firstUsableContains('Please select animal category'));
-    if (field) {
-      await ui.press(field);
-    } else {
-      const { width, height } = await browser.getWindowSize();
-      await ui.pressAt(Math.round(width / 2), Math.round(height * 0.28));
-    }
-    await ui.waitTrue(() => ui.saveExists(), 600);
-    await CatPopupPage.selectRowAndSave(row);
+    await ui.requirePickFromSheet({
+      openId: TEST_IDS.requestTreatment.animalCategoryField,
+      rowId: TEST_IDS.catPopup.row(row),
+      saveId: TEST_IDS.catPopup.save,
+    });
   }
 
   /**
-   * History field only — never Tag/ID (last run appended "demo t..." onto H003).
-   * Dismiss keyboard first so this TextView is in the tree.
+   * History field only — `rt.treatmentInput`. Never Tag/ID.
+   * @param {string} [text]
    */
   async fillTreatmentRequest(text = providerData.treatmentRequest) {
     ui.log('Request Treatment', `Treatment text: ${text}`);
-    await this.#dismissKeyboardUntilGone();
-    let field = await this.#treatmentField();
+    const field = await ui.firstByTestId(TEST_IDS.requestTreatment.treatmentInput);
     if (!field) {
-      await this.#nudgeFormUp();
-      field = await this.#treatmentField();
-    }
-    if (!field) {
-      throw new Error('Treatment request TextInput not found');
+      throw new Error(
+        'testID "rt.treatmentInput" not found — rebuild/reinstall the Vet Pal app',
+      );
     }
     await field.click().catch(() => {});
-    await browser.pause(150);
+    await browser.pause(80);
     try {
       await field.setValue(String(text));
     } catch {
       await ui.typeInto(field, text);
     }
-    await this.#dismissKeyboardUntilGone();
-  }
-
-  /**
-   * Unique substring from NewPrescription.js placeholder (not Name/Tag fields).
-   */
-  async #treatmentField() {
-    if (ui.isAndroid()) {
-      const edits = await $$(
-        'android=new UiSelector().className("android.widget.EditText")',
-      );
-      return edits[edits.length - 1] || null;
-    }
-    const selectors = [
-      '-ios predicate string:placeholderValue CONTAINS "product you are requesting"',
-      '-ios predicate string:placeholderValue CONTAINS "Please enter the treatment"',
-      '-ios predicate string:value CONTAINS "product you are requesting"',
-    ];
-    for (const sel of selectors) {
-      const els = await $$(sel);
-      if (els[0]) {
-        return els[0];
-      }
-    }
-    const views = await $$(
-      '-ios predicate string:type == "XCUIElementTypeTextView"',
-    );
-    const { height } = await browser.getWindowSize();
-    for (const el of views) {
-      const size = await el.getSize().catch(() => null);
-      if (size && size.height >= 50 && size.height < height * 0.45) {
-        return el;
-      }
-    }
-    return null;
-  }
-
-  async #nudgeFormUp() {
-    const { width, height } = await browser.getWindowSize();
-    await browser
-      .action('pointer', { parameters: { pointerType: 'touch' } })
-      .move({ duration: 0, x: width / 2, y: Math.round(height * 0.62) })
-      .down()
-      .pause(80)
-      .move({ duration: 280, x: width / 2, y: Math.round(height * 0.42) })
-      .up()
-      .perform();
-    await browser.releaseActions().catch(() => {});
-    await browser.pause(200);
+    await ui.dismissKeyboard();
   }
 
   async clickSubmitRequest() {
-    ui.log('Request Treatment', 'Submit Request');
-    await this.#dismissKeyboardUntilGone();
-    const btn =
-      (await ui.firstCaption('Submit Request')) ||
-      (await ui.firstUsableContains('Submit Request'));
-    if (btn) {
-      await ui.press(btn);
-      return;
-    }
-    await this.#tapFooterCta();
-  }
-
-  /**
-   * Keep tapping Done until the keyboard is down. Submit Request is behind it.
-   */
-  async #dismissKeyboardUntilGone() {
-    for (let i = 0; i < 4; i += 1) {
-      try {
-        if (!(await browser.isKeyboardShown())) {
-          return;
-        }
-      } catch {
-        return;
-      }
-      await ui.dismissKeyboard();
-    }
+    ui.log('Request Treatment', 'Submit Request (rt.submit)');
+    await ui.dismissKeyboard();
+    await ui.requireTapTestId(TEST_IDS.requestTreatment.submit);
   }
 
   /**
    * Step 1 still showing — Next without a vet does not advance.
+   * @returns {Promise<boolean>}
    */
   async #vetSelectStillShowing() {
-    if (await ui.firstCaptionContains('Animal Category')) {
+    if (await ui.firstByTestId(TEST_IDS.requestTreatment.animalCategoryField)) {
       return false;
     }
-    if (await ui.firstCaption('Select')) {
-      return true;
-    }
     return Boolean(
-      (await ui.firstCaptionContains('New prescription request')) ||
-        (await ui.firstCaptionContains('Select your vet practice')),
+      await ui.firstByTestId(TEST_IDS.requestTreatment.vetPracticeField),
     );
-  }
-
-  /**
-   * footerWrap is absolute at the bottom. Button center ≈ height - 70.
-   */
-  async #tapFooterCta() {
-    const { width, height } = await browser.getWindowSize();
-    const x = Math.round(width / 2);
-    const y = Math.round(height - 70);
-    ui.log('Request Treatment', `Footer CTA at ${x},${y}`);
-    await ui.pressAt(x, y);
   }
 }
 

@@ -1,36 +1,31 @@
 /**
- * CatPopup.js / SelectVetPopup.js — automation only (Vet Pal app is not changed).
- *
- * Used for Animal Category/ Type, Branch, and Vet Practice. Rows are
- * TouchableOpacity, so XCUITest often has no StaticText for the label.
- * Vet Practice: try name match, then 0-based index. Category/Branch: index.
- * Must tap a **row** then **Save**. Save with no row is a no-op.
- *
- * Layout: dismiss overlay, white sheet (title + list), footer Save.
+ * CatPopup.js — Branch, Animal Category/Type, UNITS.
+ * Tap `catPopup.row.${index}` then `catPopup.save`. No screen coordinates.
  */
 const { ui } = require('./ui');
-
-/** CatPopup.js viewCellBG + title line (~46px). */
-const ROW_HEIGHT = 46;
+const { TEST_IDS } = require('../data/testIds');
 
 class CatPopupPage {
   /**
-   * Tap list row `index` (0 = first), then Save by layout.
+   * Tap list row `index` (0 = first), then Save.
    * @param {number} [index=0]
-   * @param {{ rowHeight?: number }} [opts]
    */
-  async selectRowAndSave(index = 0, opts = {}) {
-    const rowHeight =
-      Number(opts.rowHeight) > 0 ? Number(opts.rowHeight) : ROW_HEIGHT;
-    ui.log('CatPopup', `Tap row ${index} then Save (layout)`);
-    await ui.tapSheetRowThenSave({ index, rowStride: rowHeight });
+  async selectRowAndSave(index = 0) {
+    const requested =
+      Number.isFinite(Number(index)) && Number(index) >= 0 ? Number(index) : 0;
+    ui.log('CatPopup', `Tap catPopup.row.${requested} then Save`);
+    await ui.requirePickFromSheet({
+      rowId: TEST_IDS.catPopup.row(requested),
+      saveId: TEST_IDS.catPopup.save,
+    });
   }
 
   /**
-   * CatPopup footer Save — one $$ (no location walk).
+   * Sheet is open when the CatPopup Save ID is in the tree.
+   * @returns {Promise<boolean>}
    */
   async isOpen() {
-    return ui.saveExists();
+    return Boolean(await ui.firstByTestId(TEST_IDS.catPopup.save));
   }
 }
 

@@ -4,13 +4,18 @@
  */
 const { ui } = require('./ui');
 const { requestTreatmentData } = require('../data/animalCategories');
+const { TEST_IDS } = require('../data/testIds');
 
 class RequestSummaryPage {
   async verifyRequestSummary(opts = {}) {
-    await ui.waitVisible(
-      () => ui.byExactText(requestTreatmentData.labels.submitRequestNow),
-      25000,
-      'Request Summary (Submit Request Now) not displayed',
+    await browser.waitUntil(
+      async () => Boolean(await ui.firstByTestId(TEST_IDS.summary.submitNow)),
+      {
+        timeout: 25000,
+        interval: 250,
+        timeoutMsg:
+          'Request Summary (summary.submitNow) not displayed — rebuild/reinstall the Vet Pal app',
+      },
     );
     await ui.screenshot('request-summary');
 
@@ -35,8 +40,8 @@ class RequestSummaryPage {
   }
 
   async clickSubmitRequestNow() {
-    ui.log('Request Treatment', 'Submit Request Now');
-    await ui.tapText(requestTreatmentData.labels.submitRequestNow);
+    ui.log('Request Treatment', 'Submit Request Now (summary.submitNow)');
+    await ui.requireTapTestId(TEST_IDS.summary.submitNow);
   }
 
   async verifyRequestSuccess() {

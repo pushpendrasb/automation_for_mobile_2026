@@ -1,29 +1,19 @@
 /**
- * Choose a Provider modal.
- * Source: vetpal-animal-owner/src/Screens/CustomPopup/ChooseProviderPopup.js
- *
- * Titles sit inside Pressable (not standalone StaticText), so exact
- * `label == "Vet Practice"` fails even when the card is on screen.
+ * Choose a Provider modal (`ChooseProviderPopup.js`).
+ * Tap `pending.requestAdvice`, then `provider.vetPractice` / `provider.nearby`.
  */
 const { ui } = require('./ui');
-const { requestTreatmentData } = require('../data/animalCategories');
+const { TEST_IDS } = require('../data/testIds');
 
 class ProviderSelectionPage {
-  #chooseProviderSelector() {
-    const t = requestTreatmentData.labels.chooseProvider;
-    if (ui.isAndroid()) {
-      return `android=new UiSelector().text("${t}")`;
-    }
-    return `-ios predicate string:label == "${t}" OR name == "${t}"`;
-  }
-
   async waitForPopup(timeout = 10000) {
     await browser.waitUntil(
-      async () => ui.anyDisplayed(this.#chooseProviderSelector()),
+      async () => Boolean(await ui.firstByTestId(TEST_IDS.provider.vetPractice)),
       {
         timeout,
         interval: 250,
-        timeoutMsg: 'Choose a Provider popup not displayed',
+        timeoutMsg:
+          'Choose a Provider popup not displayed (provider.vetPractice) — rebuild/reinstall the Vet Pal app',
       },
     );
   }
@@ -33,12 +23,11 @@ class ProviderSelectionPage {
   }
 
   /**
-   * Bottom CTA on Pending Prescriptions (MyPrescriptions.js).
-   * Full-width button — tap the bottom bar, do not CONTAINS-search (slow / full-screen hits).
+   * Bottom CTA on Pending Prescriptions (`pending.requestAdvice`).
    */
   async clickRequestVetAdviceTreatment() {
-    ui.log('Request Treatment', 'Tapping Request Vet Advice/Treatment');
-    await ui.tapRequestVetAdviceButton();
+    ui.log('Request Treatment', 'Tapping pending.requestAdvice');
+    await ui.requireTapTestId(TEST_IDS.pending.requestAdvice);
     await this.waitForPopup();
     await ui.screenshot('before-provider-selection');
   }
@@ -54,11 +43,15 @@ class ProviderSelectionPage {
   }
 
   async selectVetPractice() {
-    await this.selectProvider(requestTreatmentData.labels.vetPractice);
+    await this.waitForPopup();
+    await ui.requireTapTestId(TEST_IDS.provider.vetPractice);
+    await ui.screenshot('after-provider-selection');
   }
 
   async selectNearby() {
-    await this.selectProvider(requestTreatmentData.labels.nearbyRemedyStore);
+    await this.waitForPopup();
+    await ui.requireTapTestId(TEST_IDS.provider.nearby);
+    await ui.screenshot('after-provider-selection');
   }
 }
 

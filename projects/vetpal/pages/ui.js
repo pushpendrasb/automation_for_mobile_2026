@@ -1,10 +1,11 @@
 /**
  * Shared Appium helpers for Vet-Pal (iOS XCUITest + Android UiAutomator2).
- * No testIDs on Request Treatment screens — selectors use visible text /
- * placeholderValue. XPath is a last resort.
+ * Every tap/type goes through React Native `testID` (data/testIds.js).
+ * Do not tap by screen width/height — rebuild the app if an ID is missing.
  */
 const path = require('path');
 const fs = require('fs');
+const { TEST_IDS } = require('../data/testIds');
 
 class Ui {
   isAndroid() {
@@ -84,11 +85,9 @@ class Ui {
 
   async tap(el) {
     try {
-      const loc = await el.getLocation();
-      const size = await el.getSize();
-      await this.tapAt(loc.x + size.width / 2, loc.y + size.height / 2);
-    } catch {
       await el.click();
+    } catch {
+      await this.press(el);
     }
   }
 
@@ -112,61 +111,151 @@ class Ui {
   }
 
   /**
-   * True when a Save footer sits on the lower band (step 1 CTA is Next).
-   * Ignore leftover Save nodes higher in the tree — those skipped the
-   * Vet Practice tap and left the field on "Select".
-   * @returns {Promise<boolean>}
+   * React Native `testID` → iOS accessibilityIdentifier (`name`), Android resource-id.
+   * @param {string} id
    */
-  async saveExists() {
-    const { height } = await browser.getWindowSize();
-    const selector = this.isAndroid()
-      ? 'android=new UiSelector().text("Save")'
-      : '-ios predicate string:label == "Save" OR name == "Save"';
-    try {
-      const els = await $$(selector);
-      for (const el of els) {
-        const loc = await el.getLocation().catch(() => null);
-        if (loc && loc.y >= height * 0.62) {
-          return true;
-        }
-      }
-    } catch {
-      // ignore
+  testIdSelector(id) {
+    const e = this.escape(id);
+    if (this.isAndroid()) {
+      return `android=new UiSelector().resourceId("${e}")`;
     }
-    return false;
+    return `-ios predicate string:name == "${e}" OR label == "${e}"`;
   }
 
   /**
-   * Tap list row `index` then the Save footer by layout (no Appium find).
-   * CatPopup / SelectVetPopup: list height 350 above footer ~89.
-   * The recording showed sheets sitting open while we queried Save in the tree.
-   * @param {{ index?: number, rowStride?: number, listHeight?: number, footerHeight?: number }} [opts]
+   * True if any of the IDs exist. One `$$` — no isDisplayed walk.
+   * @param {string[]} ids
+   * @returns {Promise<boolean>}
    */
-  async tapSheetRowThenSave(opts = {}) {
-    const index =
-      Number.isFinite(Number(opts.index)) && Number(opts.index) >= 0
-        ? Number(opts.index)
-        : 0;
-    const rowStride = Number(opts.rowStride) > 0 ? Number(opts.rowStride) : 46;
-    const listHeight =
-      Number(opts.listHeight) > 0 ? Number(opts.listHeight) : 350;
-    const footerHeight =
-      Number(opts.footerHeight) > 0 ? Number(opts.footerHeight) : 89;
-    const { width, height } = await browser.getWindowSize();
-    const x = Math.round(width / 2);
-    const listTop = height - footerHeight - listHeight;
-    const rowY = Math.round(listTop + rowStride * index + rowStride / 2);
-    const saveY = Math.round(height - 62);
-    this.log('UI', `Sheet row ${index} at ${x},${rowY} then Save ${x},${saveY}`);
-    await this.pressAt(x, rowY);
-    await browser.pause(50);
-    await this.pressAt(x, saveY);
-    await browser.pause(120);
+  async anyTestIdExists(ids) {
+    if (!ids.length) {
+      return false;
+    }
+    if (this.isAndroid()) {
+      for (const id of ids) {
+        if (await this.firstByTestId(id)) {
+          return true;
+        }
+      }
+      return false;
+    }
+    const parts = ids.map(id => {
+      const e = this.escape(id);
+      return `name == "${e}" OR label == "${e}"`;
+    });
+    try {
+      const els = await $$(`-ios predicate string:${parts.join(' OR ')}`);
+      return els.length > 0;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * First match for a `testID`. Does not require `isDisplayed` — RN modals
+   * often report Save/rows as not displayed while they are tappable.
+   * @param {string} id
+   * @returns {Promise<WebdriverIO.Element|null>}
+   */
+  async firstByTestId(id) {
+    try {
+      const els = await $$(this.testIdSelector(id));
+      return els[0] || null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Tap by `testID`. One snapshot + click on the real control (no layout).
+   * Returns false when the ID is missing (older app build).
+   * @param {string} id
+   * @returns {Promise<boolean>}
+   */
+  async tapTestId(id) {
+    const el = await this.firstByTestId(id);
+    if (!el) {
+      return false;
+    }
+    this.log('UI', `Tap testID ${id}`);
+    try {
+      await el.click();
+    } catch {
+      await this.press(el);
+    }
+    return true;
+  }
+
+  /**
+   * Tap by `testID`. Throws when the ID is missing (older app build).
+   * @param {string} id
+   */
+  async requireTapTestId(id) {
+    if (!(await this.tapTestId(id))) {
+      throw new Error(
+        `testID "${id}" not found — rebuild/reinstall the Vet Pal app`,
+      );
+    }
+  }
+
+  /**
+   * Open a sheet by field ID, tap a row, tap Save, wait for the sheet to leave.
+   * One Appium find per step. Returns false if any ID is missing.
+   * @param {{ openId?: string, rowId: string, saveId: string }} ids
+   * @returns {Promise<boolean>}
+   */
+  async pickFromSheet({ openId, rowId, saveId }) {
+    const sheetOpen = async () => Boolean(await this.firstByTestId(saveId));
+
+    if (!(await sheetOpen())) {
+      if (!openId || !(await this.tapTestId(openId))) {
+        return false;
+      }
+      if (!(await this.waitTrue(sheetOpen, 400, 30))) {
+        return false;
+      }
+    }
+
+    if (!(await this.tapTestId(rowId))) {
+      return false;
+    }
+    await browser.pause(40);
+    if (!(await this.tapTestId(saveId))) {
+      return false;
+    }
+    return this.waitTrue(
+      async () => !(await this.firstByTestId(saveId)),
+      400,
+      30,
+    );
+  }
+
+  /**
+   * Same as {@link pickFromSheet} but throws when IDs are missing.
+   * @param {{ openId?: string, rowId: string, saveId: string }} ids
+   */
+  async requirePickFromSheet(ids) {
+    if (!(await this.pickFromSheet(ids))) {
+      throw new Error(
+        `Sheet pick failed (${ids.openId || '-'} → ${ids.rowId} → ${ids.saveId}) — rebuild/reinstall the Vet Pal app`,
+      );
+    }
+  }
+
+  /**
+   * True when a popup Save control is in the tree (testID, not Y position).
+   * @returns {Promise<boolean>}
+   */
+  async saveExists() {
+    return Boolean(
+      (await this.firstByTestId(TEST_IDS.vetPracticePopup.save)) ||
+        (await this.firstByTestId(TEST_IDS.catPopup.save)) ||
+        (await this.firstByTestId(TEST_IDS.remedyStoreModal.save)),
+    );
   }
 
   /**
    * Poll until `check` is true. Returns false on timeout (does not throw).
-   * Prefer `saveExists` as the check — it is one $$ not a location walk.
    * @param {() => Promise<boolean>} check
    * @param {number} [timeout=600]
    * @param {number} [interval=40]
@@ -191,7 +280,8 @@ class Ui {
   }
 
   /**
-   * Finger tap at screen coordinates. Same path as LoginPage (mobile: tap).
+   * Touch the center of a *found* element. Not for screen-fraction taps.
+   * Prefer {@link tapTestId} / {@link tap}.
    * @param {number} x
    * @param {number} y
    */
@@ -207,8 +297,8 @@ class Ui {
   }
 
   /**
-   * Touch down/up — RN TouchableOpacity inside react-native-modal often
-   * ignores `mobile: tap` coordinates.
+   * Pointer down/up at an element's own center (from getLocation/getSize).
+   * Not a getWindowSize / screen-percentage tap.
    * @param {number} x
    * @param {number} y
    */
@@ -249,8 +339,9 @@ class Ui {
   }
 
   /**
-   * Skip Application / Window nodes. XCUITest CONTAINS often returns those
-   * first (full device rect, e.g. 430×932) instead of the visible caption.
+   * Skip Application / Window-sized nodes. XCUITest CONTAINS often returns
+   * those first instead of the visible caption. Uses the element's own size,
+   * not the device window.
    * @param {WebdriverIO.Element} el
    */
   async isUsableCaption(el) {
@@ -259,11 +350,10 @@ class Ui {
     }
     try {
       const size = await el.getSize();
-      const { width, height } = await browser.getWindowSize();
-      if (size.width >= width * 0.85 && size.height >= height * 0.5) {
+      if (size.width < 4 || size.height < 4) {
         return false;
       }
-      if (size.width < 4 || size.height < 4) {
+      if (size.width > 380 && size.height > 400) {
         return false;
       }
       return true;
@@ -363,84 +453,22 @@ class Ui {
   }
 
   /**
-   * Tap Home first tile (Request / Treatment) using Home.js layout only.
-   *
-   * Tile labels are not in the iOS tree (TouchableOpacity groups them).
-   * Do not enumerate Image/Button nodes — that is what made the tap slow.
-   *
-   * Home.js: itemWidth = SCREEN_WIDTH/2 - 10, itemHeight = itemWidth * 1.16,
-   * header 64, FlatList paddingTop 10, left column.
-   */
-  async tapDashboardTile() {
-    await this.tapFirstDashboardTileByGrid();
-  }
-
-  /**
-   * @param {number} [yFactor=0.40] Position inside the tile (illustration, not caption)
-   */
-  async tapFirstDashboardTileByGrid(yFactor = 0.4) {
-    const { width, height } = await browser.getWindowSize();
-    const tileW = width / 2.0 - 10;
-    const tileH = tileW * 1.16;
-    const originY = Math.round(Math.min(height * 0.145, 136));
-    const x = Math.round(10 + tileW / 2);
-    const y = Math.round(originY + tileH * yFactor);
-    this.log('UI', `Tap Request Treatment tile at ${x},${y}`);
-    await this.tapAt(x, y);
-  }
-
-  /**
-   * Pending Prescriptions bottom CTA — full-width bar (MyPrescriptions.js).
+   * Pending Prescriptions bottom CTA (`pending.requestAdvice`).
    */
   async tapRequestVetAdviceButton() {
-    const { width, height } = await browser.getWindowSize();
-    const x = Math.round(width / 2);
-    const y = Math.round(height * 0.93);
-    this.log('UI', `Tap Request Vet Advice/Treatment at ${x},${y}`);
-    await this.tapAt(x, y);
+    await this.requireTapTestId(TEST_IDS.pending.requestAdvice);
   }
 
   /**
-   * Choose a Provider option card (Pressable). Title is grouped with subtitle,
-   * so exact "Vet Practice" is not in the tree. Prefer CONTAINS on a non-fullscreen
-   * node; otherwise tap below the "Choose a Provider" header.
+   * Choose a Provider option card (`provider.vetPractice` / `provider.nearby`).
    * @param {string} title "Vet Practice" | "Nearby Remedy Store"
    */
   async tapProviderOption(title) {
-    const { width, height } = await browser.getWindowSize();
-    const card = await this.firstUsableContains(title);
-    if (card) {
-      const loc = await card.getLocation();
-      const size = await card.getSize();
-      const isCard =
-        size.width < width * 0.95 && size.height < height * 0.35;
-      if (isCard) {
-        this.log(
-          'UI',
-          `Tap provider "${title}" ${Math.round(size.width)}x${Math.round(size.height)} @ ${Math.round(loc.x)},${Math.round(loc.y)}`,
-        );
-        await this.tapAt(loc.x + size.width / 2, loc.y + size.height / 2);
-        return;
-      }
-    }
-
-    const header = await this.firstDisplayed(
-      this.isAndroid()
-        ? 'android=new UiSelector().text("Choose a Provider")'
-        : '-ios predicate string:label == "Choose a Provider" OR name == "Choose a Provider"',
-    );
-    if (!header) {
-      throw new Error(`Provider option "${title}" not found`);
-    }
-    const loc = await header.getLocation();
-    const size = await header.getSize();
-    const x = Math.round(width / 2);
-    const belowHeader = loc.y + size.height;
-    const y = Math.round(
-      title === 'Nearby Remedy Store' ? belowHeader + 175 : belowHeader + 95,
-    );
-    this.log('UI', `Tap provider "${title}" below header at ${x},${y}`);
-    await this.tapAt(x, y);
+    const nearby = /nearby/i.test(String(title));
+    const id = nearby
+      ? TEST_IDS.provider.nearby
+      : TEST_IDS.provider.vetPractice;
+    await this.requireTapTestId(id);
   }
 
   /**
@@ -537,7 +565,7 @@ class Ui {
       'UI',
       `tapContains "${text}" ${Math.round(size.width)}x${Math.round(size.height)} @ ${Math.round(loc.x)},${Math.round(loc.y)}`,
     );
-    await this.tapAt(loc.x + size.width / 2, loc.y + size.height / 2);
+    await el.click().catch(() => this.press(el));
   }
 
   async typeInto(el, text) {
@@ -561,9 +589,9 @@ class Ui {
   }
 
   /**
-   * KeyboardToolbar.Done (App.js) — blue "Done" on the bar above the keyboard.
-   * Tap the lowest on-screen "Done", then the trailing accessory strip until
-   * the keyboard is actually gone. Do not tap mid-screen (that refocuses a field).
+   * Dismiss the iOS keyboard. Never call `mobile: hideKeyboard` — WDA cannot
+   * dismiss KeyboardToolbar and WebdriverIO retries each failure ~4s × 3.
+   * Tap `keyboard.toolbar.done` (already on KeyboardToolbar.Done).
    */
   async dismissKeyboard() {
     if (this.isAndroid()) {
@@ -583,78 +611,16 @@ class Ui {
       // continue
     }
 
+    if (await this.tapTestId(TEST_IDS.keyboard.done)) {
+      await browser.pause(120);
+      return;
+    }
+
     try {
-      await browser.execute('mobile: hideKeyboard');
-      await browser.pause(200);
-      if (!(await browser.isKeyboardShown().catch(() => false))) {
-        return;
-      }
+      await browser.keys(['Return']);
     } catch {
-      // fall through
+      // keyboard may already be down
     }
-
-    const done = await this.#lowestDone();
-    if (done) {
-      this.log('UI', 'Tap keyboard Done');
-      const loc = await done.getLocation();
-      const size = await done.getSize();
-      await this.pressAt(loc.x + size.width / 2, loc.y + size.height / 2);
-      await browser.pause(250);
-      if (!(await browser.isKeyboardShown().catch(() => false))) {
-        return;
-      }
-    }
-
-    const { width, height } = await browser.getWindowSize();
-    const x = Math.round(width - 24);
-    for (const fromBottom of [358, 392, 330, 420]) {
-      if (!(await browser.isKeyboardShown().catch(() => false))) {
-        return;
-      }
-      const y = Math.round(height - fromBottom);
-      this.log('UI', `Tap Done accessory at ${x},${y}`);
-      await this.pressAt(x, y);
-      await browser.pause(220);
-    }
-  }
-
-  /**
-   * KeyboardToolbar Done sits lowest on the screen (above the keys).
-   */
-  async #lowestDone() {
-    const selectors = [
-      '-ios class chain:**/XCUIElementTypeButton[`name == "Done" OR label == "Done"`]',
-      '-ios predicate string:name == "Done" OR label == "Done"',
-    ];
-    let best = null;
-    let bestY = -1;
-    for (const sel of selectors) {
-      let els = [];
-      try {
-        els = await $$(sel);
-      } catch {
-        els = [];
-      }
-      for (const el of els) {
-        try {
-          const loc = await el.getLocation();
-          const size = await el.getSize();
-          if (size.height > 80) {
-            continue;
-          }
-          if (loc.y > bestY) {
-            best = el;
-            bestY = loc.y;
-          }
-        } catch {
-          // ignore
-        }
-      }
-      if (best) {
-        return best;
-      }
-    }
-    return null;
   }
 
   async scrollToText(text) {
@@ -678,31 +644,17 @@ class Ui {
   }
 
   async swipeUp() {
-    const { width, height } = await browser.getWindowSize();
-    const startY = Math.round(height * 0.72);
-    const endY = Math.round(height * 0.28);
-    const x = Math.round(width / 2);
-    if (this.isAndroid()) {
-      await browser.performActions([
-        {
-          type: 'pointer',
-          id: 'finger1',
-          parameters: { pointerType: 'touch' },
-          actions: [
-            { type: 'pointerMove', duration: 0, x, y: startY },
-            { type: 'pointerDown', button: 0 },
-            { type: 'pointerMove', duration: 400, x, y: endY },
-            { type: 'pointerUp', button: 0 },
-          ],
-        },
-      ]);
-      await browser.releaseActions();
-      return;
+    try {
+      await browser.execute('mobile: swipe', {
+        direction: 'up',
+        velocity: 400,
+      });
+    } catch {
+      await browser.execute('mobile: swipeGesture', {
+        direction: 'up',
+        percent: 0.75,
+      });
     }
-    await browser.execute('mobile: swipe', {
-      direction: 'up',
-      velocity: 400,
-    });
   }
 
   async waitForToastContaining(text, timeout = 15000) {

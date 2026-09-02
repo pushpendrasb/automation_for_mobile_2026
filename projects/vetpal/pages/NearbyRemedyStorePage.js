@@ -1,10 +1,11 @@
 /**
  * Nearby Remedy Store New Request (NewPrescriptionForRemedyStore.js).
- * Step 1 store + branch → Step 2 animal details → Step 3 assessment WebView.
+ * Tap by testID only — `rt.nearby.search` and `rt.nearby.store.${index}`.
  */
 const { ui } = require('./ui');
 const { providerData } = require('../data/providerData');
 const { requestTreatmentData } = require('../data/animalCategories');
+const { TEST_IDS } = require('../data/testIds');
 const VetPracticeFormPage = require('./VetPracticeFormPage');
 
 class NearbyRemedyStorePage {
@@ -17,8 +18,8 @@ class NearbyRemedyStorePage {
   }
 
   /**
-   * Nearby list is inline cards. Type REMEDY_STORE_NAME into Search, then tap
-   * the matching card or card at REMEDY_STORE_INDEX.
+   * Nearby list is inline cards. Type into search when index is 0, then tap
+   * `rt.nearby.store.${index}`.
    * @param {string} [storeName]
    * @param {number} [index]
    */
@@ -41,33 +42,21 @@ class NearbyRemedyStorePage {
         `Nearby skip search (index ${cardIndex}) so the full list stays in order`,
       );
     }
-    const card =
-      name && cardIndex === 0
-        ? (await ui.firstCaptionContains(name)) ||
-          (await ui.firstUsableContains(name))
-        : null;
-    if (card) {
-      await ui.tap(card);
-      return;
-    }
-    ui.log('Provider', `Nearby name not in tree — tap card ${cardIndex}`);
-    await this.#tapNearbyCard(cardIndex);
+    await ui.requireTapTestId(
+      TEST_IDS.requestTreatment.nearbyStoreCard(cardIndex),
+    );
   }
 
   /**
-   * NewPrescriptionForRemedyStore.js search placeholder "Search store name...".
+   * Type into `rt.nearby.search`.
    * @param {string} query
    */
   async #typeNearbySearch(query) {
-    const search = ui.isAndroid()
-      ? await ui.firstDisplayed(
-          'android=new UiSelector().className("android.widget.EditText")',
-        )
-      : await ui.firstDisplayed(
-          '-ios predicate string:placeholderValue CONTAINS "Search store name" OR value CONTAINS "Search store name"',
-        );
+    const search = await ui.firstByTestId(TEST_IDS.requestTreatment.nearbySearch);
     if (!search) {
-      return;
+      throw new Error(
+        'testID "rt.nearby.search" not found — rebuild/reinstall the Vet Pal app',
+      );
     }
     ui.log('Provider', `Nearby search "${query}"`);
     await search.click().catch(() => ui.tap(search));
@@ -78,30 +67,6 @@ class NearbyRemedyStorePage {
     }
     await browser.pause(100);
     await ui.dismissKeyboard().catch(() => {});
-  }
-
-  /**
-   * pharmacyCard: padding 14 + logo 46 + padding 14 + marginBottom 12 ≈ 86.
-   * First card sits under the step-1 search / list header.
-   * @param {number} index
-   */
-  async #tapNearbyCard(index) {
-    const { width, height } = await browser.getWindowSize();
-    const x = Math.round(width / 2);
-    const search =
-      (await ui.firstCaptionContains('Search')) ||
-      (await ui.firstUsableContains('Search store'));
-    let firstCenterY;
-    if (search) {
-      const loc = await search.getLocation();
-      const size = await search.getSize();
-      firstCenterY = loc.y + size.height + 14 + 37;
-    } else {
-      firstCenterY = height * 0.38;
-    }
-    const y = Math.round(firstCenterY + 86 * index);
-    ui.log('Provider', `Nearby card ${index} at ${x},${y}`);
-    await ui.pressAt(x, y);
   }
 
   /**

@@ -12,6 +12,9 @@
  * - Combine Home / OTP labels into a single predicate so each poll is 1 query.
  * - Do not terminate+relaunch when the Sign In form is already visible.
  */
+const { ui } = require('./ui');
+const { TEST_IDS } = require('../data/testIds');
+
 class LoginPage {
   #isAndroid() {
     const name = String(browser.capabilities.platformName || '').toLowerCase();
@@ -88,23 +91,40 @@ class LoginPage {
     }
   }
 
+  /**
+   * Sign In tab only exists once Login.js has rendered. Wait for `login.mobile`
+   * (already on Sign In) or `login.signInTab` (on Sign Up) — never tap the tab
+   * against the splash tree.
+   */
   async ensureSignInMode() {
-    const { loginTab, welcomeHint } = this.#testData();
-    if (await this.#anyDisplayed(this.#exactSelector(welcomeHint))) {
+    if (await ui.firstByTestId(TEST_IDS.login.mobile)) {
       return;
     }
-    const signInTab = await this.#firstDisplayed(this.#exactSelector(loginTab));
-    if (signInTab) {
-      await this.#tapCenter(signInTab);
-      await browser.waitUntil(
-        async () => this.#anyDisplayed(this.#exactSelector(welcomeHint)),
-        {
-          timeout: 3000,
-          interval: 150,
-          timeoutMsg: 'Sign In tab did not show the login form',
-        },
-      ).catch(() => {});
+    await browser.waitUntil(
+      async () =>
+        Boolean(
+          (await ui.firstByTestId(TEST_IDS.login.mobile)) ||
+            (await ui.firstByTestId(TEST_IDS.login.signInTab)),
+        ),
+      {
+        timeout: 20000,
+        interval: 300,
+        timeoutMsg:
+          'login.mobile / login.signInTab not found — wait for splash, or rebuild/reinstall the Vet Pal app',
+      },
+    );
+    if (await ui.firstByTestId(TEST_IDS.login.mobile)) {
+      return;
     }
+    await ui.requireTapTestId(TEST_IDS.login.signInTab);
+    await browser.waitUntil(
+      async () => Boolean(await ui.firstByTestId(TEST_IDS.login.mobile)),
+      {
+        timeout: 5000,
+        interval: 150,
+        timeoutMsg: 'Sign In tab did not show login.mobile',
+      },
+    );
   }
 
   #exactSelector(text) {
@@ -139,6 +159,10 @@ class LoginPage {
   }
 
   async resolveMobileField() {
+    const byId = await ui.firstByTestId(TEST_IDS.login.mobile);
+    if (byId) {
+      return byId;
+    }
     const { mobilePlaceholder } = this.#testData();
     if (this.#isAndroid()) {
       const byHint = await this.#firstDisplayed(
@@ -190,6 +214,10 @@ class LoginPage {
   }
 
   async resolvePasswordField() {
+    const byId = await ui.firstByTestId(TEST_IDS.login.password);
+    if (byId) {
+      return byId;
+    }
     const { passwordPlaceholder } = this.#testData();
     if (this.#isAndroid()) {
       const byHint = await this.#firstDisplayed(
@@ -243,6 +271,9 @@ class LoginPage {
    * True when the Sign In form is already showing — skip terminate/relaunch.
    */
   async isOnLoginScreenFast() {
+    if (await ui.firstByTestId(TEST_IDS.login.mobile)) {
+      return true;
+    }
     const { welcomeHint, mobilePlaceholder } = this.#testData();
     if (await this.#anyDisplayed(this.#exactSelector(welcomeHint))) {
       return true;
@@ -316,43 +347,25 @@ class LoginPage {
   }
 
   /**
-   * Home → drawer → Logout → OK. Used when the session is still authenticated.
+   * Home → drawer (`home.menu`) → Logout (`menu.logout`) → OK (`alert.ok`).
+   * Used when the session is still authenticated.
    */
   async #logoutFromHome() {
     console.log('Session still on Home — logging out to reach Sign In');
-    try {
-      await browser.execute('mobile: tap', {
-        x: 32,
-        y: 90,
-      });
-    } catch {
-      // ignore
-    }
+    await ui.requireTapTestId(TEST_IDS.home.menu);
 
     await browser.waitUntil(
-      async () => this.#anyDisplayed(this.#exactSelector('Logout')),
+      async () => Boolean(await ui.firstByTestId(TEST_IDS.menu.logout)),
       {
         timeout: 8000,
         interval: 300,
-        timeoutMsg: 'Logout item not visible in side menu',
+        timeoutMsg:
+          'menu.logout not visible — rebuild/reinstall the Vet Pal app',
       },
-    ).catch(async () => {
-      await browser.execute('mobile: swipe', {
-        direction: 'up',
-        velocity: 500,
-      });
-    });
+    );
 
-    const logout = await this.#firstDisplayed(this.#exactSelector('Logout'));
-    if (!logout) {
-      throw new Error('Logout menu item not found');
-    }
-    await this.#tapCenter(logout);
-
-    const ok = await this.#firstDisplayed(this.#exactSelector('OK'));
-    if (ok) {
-      await this.#tapCenter(ok);
-    }
+    await ui.requireTapTestId(TEST_IDS.menu.logout);
+    await ui.requireTapTestId(TEST_IDS.alert.ok);
   }
 
   async assertLoginFormVisible() {
@@ -367,9 +380,8 @@ class LoginPage {
     }
 
     const { signInButton } = this.#testData();
-    const btn = await this.#firstDisplayed(this.#exactSelector(signInButton));
-    if (!btn) {
-      throw new Error(`${signInButton} button not visible`);
+    if (!(await ui.firstByTestId(TEST_IDS.login.submit))) {
+      throw new Error(`${signInButton} button not visible (login.submit)`);
     }
   }
 
@@ -428,35 +440,21 @@ class LoginPage {
       // continue — tap is cheap if the keyboard is already down
     }
     try {
-      const { width } = await browser.getWindowSize();
-      await browser.execute('mobile: tap', {
-        x: Math.round(width / 2),
-        y: 80,
-      });
+      await ui.dismissKeyboard();
     } catch {
       // ignore
     }
   }
 
   async tapSignIn() {
-    const { signInButton } = this.#testData();
-    const btn = await this.#firstDisplayed(this.#exactSelector(signInButton));
-    if (!btn) {
-      throw new Error(`${signInButton} button not found`);
-    }
-    await this.#tapCenter(btn);
+    await ui.requireTapTestId(TEST_IDS.login.submit);
   }
 
   async #tapCenter(el) {
     try {
-      const loc = await el.getLocation();
-      const size = await el.getSize();
-      await browser.execute('mobile: tap', {
-        x: Math.round(loc.x + size.width / 2),
-        y: Math.round(loc.y + size.height / 2),
-      });
-    } catch {
       await el.click();
+    } catch {
+      await ui.press(el);
     }
   }
 
@@ -485,6 +483,9 @@ class LoginPage {
   }
 
   async #isHomeVisible() {
+    if (await ui.firstByTestId(TEST_IDS.home.requestTreatment)) {
+      return true;
+    }
     const { homeIndicators } = this.#testData();
     const primary = homeIndicators[0];
     if (!primary) {
@@ -492,13 +493,18 @@ class LoginPage {
     }
     if (this.#isAndroid()) {
       return this.#anyDisplayed(
-        `android=new UiSelector().textContains("${this.#escape(primary)}")`,
+        `android=new UiSelector().text("${this.#escape(primary)}")`,
       );
     }
     const e = this.#escape(primary);
-    return this.#anyDisplayed(
-      `-ios predicate string:label CONTAINS "${e}" OR name CONTAINS "${e}"`,
-    );
+    try {
+      const els = await $$(
+        `-ios predicate string:label == "${e}" OR name == "${e}"`,
+      );
+      return els.length > 0;
+    } catch {
+      return false;
+    }
   }
 
   async #isOtpScreenVisible() {
