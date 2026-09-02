@@ -23,8 +23,6 @@ const { ui } = require('./ui');
 
 /** CatPopup.js viewCellBG + title line (~46px including separator). */
 const ROW_STRIDE = 46;
-/** Title bottom → first row: separator marginTop 12 + 1px line + list marginTop 10. */
-const LIST_GAP = 23;
 
 class SelectBranchPopupPage {
   /**
@@ -33,7 +31,7 @@ class SelectBranchPopupPage {
    * Modal titles often report isDisplayed=false on iOS — use Y, not displayed.
    */
   async isOpen() {
-    return Boolean(await this.#footerSave());
+    return ui.saveExists();
   }
 
   /**
@@ -80,12 +78,11 @@ class SelectBranchPopupPage {
     }
 
     await this.#tapSelectField();
-    if (await ui.waitTrue(() => this.isOpen(), 1600)) {
+    if (await ui.waitTrue(() => ui.saveExists(), 600)) {
       return true;
     }
-
-    await this.#tapSelectFieldFallbacks();
-    return ui.waitTrue(() => this.isOpen(), 1000);
+    await this.#tapSelectField();
+    return ui.waitTrue(() => ui.saveExists(), 400);
   }
 
   /**
@@ -95,30 +92,10 @@ class SelectBranchPopupPage {
     const { width, height } = await browser.getWindowSize();
     const x = Math.round(width / 2);
 
-    const placeholder = await this.#selectPlaceholder();
-    if (placeholder) {
-      const loc = await placeholder.getLocation();
-      const size = await placeholder.getSize();
-      const y = Math.round(loc.y + Math.min(size.height, 52) / 2);
-      ui.log('BranchPopup', `Tap Select Branch placeholder at ${x},${y}`);
-      await ui.pressAt(x, y);
-      return;
-    }
-
     const formTitle = await this.#formTitleRect();
     if (formTitle) {
-      // formField: marginTop 4, minHeight 52 — center of the gray row
       const y = Math.round(formTitle.loc.y + formTitle.size.height + 4 + 26);
       ui.log('BranchPopup', `Tap gray field below Branch title at ${x},${y}`);
-      await ui.pressAt(x, y);
-      return;
-    }
-
-    const hint = await ui.firstCaptionContains('Go to My Remedy Store');
-    if (hint) {
-      const loc = await hint.getLocation();
-      const y = Math.round(loc.y - 72);
-      ui.log('BranchPopup', `Tap field above store hint at ${x},${y}`);
       await ui.pressAt(x, y);
       return;
     }
@@ -129,54 +106,6 @@ class SelectBranchPopupPage {
   }
 
   /**
-   * Extra taps if the first miss hit the title or the hint card.
-   */
-  async #tapSelectFieldFallbacks() {
-    const { width } = await browser.getWindowSize();
-    const x = Math.round(width / 2);
-    const formTitle = await this.#formTitleRect();
-    const ys = [];
-    if (formTitle) {
-      const top = formTitle.loc.y + formTitle.size.height;
-      ys.push(Math.round(top + 20), Math.round(top + 36), Math.round(top + 50));
-    }
-    const hint = await ui.firstCaptionContains('Go to My Remedy Store');
-    if (hint) {
-      const loc = await hint.getLocation();
-      ys.push(Math.round(loc.y - 90), Math.round(loc.y - 55));
-    }
-    for (const y of ys) {
-      ui.log('BranchPopup', `Retry field tap at y=${y}`);
-      await ui.pressAt(x, y);
-      if (await ui.waitTrue(() => this.isOpen(), 400)) {
-        return;
-      }
-    }
-  }
-
-  /**
-   * Exact "Select Branch" on the field — not "Select" (Vet Practice) and
-   * not "Select Dispense Store".
-   */
-  async #selectPlaceholder() {
-    const selector = ui.isAndroid()
-      ? 'android=new UiSelector().text("Select Branch")'
-      : '-ios predicate string:label == "Select Branch" OR name == "Select Branch" OR value == "Select Branch"';
-    const els = await $$(selector);
-    for (const el of els) {
-      const loc = await el.getLocation().catch(() => null);
-      if (!loc) {
-        continue;
-      }
-      return el;
-    }
-    return (
-      (await ui.firstCaption('Select Branch')) ||
-      (await ui.firstUsableContains('Select Branch'))
-    );
-  }
-
-  /**
    * Green TitleView only (exact "Branch"). Prefer the highest match so a
    * dimmed form label wins over a sheet title if both are in the tree.
    */
@@ -184,18 +113,6 @@ class SelectBranchPopupPage {
     const rects = await this.#exactBranchRects();
     const upper = [...rects].sort((a, b) => a.loc.y - b.loc.y);
     return upper[0] || null;
-  }
-
-  /**
-   * Sheet title is the lowest exact "Branch" (below the form label).
-   */
-  async #popupTitleRect() {
-    const { height } = await browser.getWindowSize();
-    const rects = await this.#exactBranchRects();
-    const lower = rects
-      .filter(t => t.loc.y > height * 0.4)
-      .sort((a, b) => b.loc.y - a.loc.y);
-    return lower[0] || this.#formTitleRect();
   }
 
   /**
@@ -223,110 +140,15 @@ class SelectBranchPopupPage {
    * @param {number} index
    */
   async #selectRowAndSave(index) {
-    await this.#tapRow(index);
-    await this.#saveAndWaitClosed();
-  }
-
-  async #saveAndWaitClosed() {
-    await browser.pause(60);
-    await this.#tapSave();
-    if (await ui.waitTrue(async () => !(await this.isOpen()), 1200)) {
-      return;
-    }
-    ui.log('BranchPopup', 'Retry row 0 + Save');
-    await this.#tapRow(0);
-    await browser.pause(60);
-    await this.#tapSave();
-    if (!(await ui.waitTrue(async () => !(await this.isOpen()), 1200))) {
-      throw new Error(
-        'Save did not close the Branch popup. A list row must be tapped before Save.',
-      );
-    }
+    ui.log('BranchPopup', `Tap row ${index} then Save (layout)`);
+    await ui.tapSheetRowThenSave({ index, rowStride: ROW_STRIDE });
   }
 
   /**
-   * Prefer list geometry from the Save footer. The form also has a "Branch"
-   * TitleView lower on the screen, so title-Y can point at the dimmed form.
-   * CatPopup list is height 350 with marginBottom 10 above the footer.
-   * @param {number} index
-   */
-  async #tapRow(index) {
-    const { width, height } = await browser.getWindowSize();
-    const x = Math.round(width / 2);
-    const LIST_HEIGHT = 350;
-    const LIST_MARGIN_BOTTOM = 10;
-    const save = await this.#footerSave();
-    let listTop;
-    if (save) {
-      const loc = await save.getLocation();
-      listTop = loc.y - LIST_MARGIN_BOTTOM - LIST_HEIGHT;
-    } else {
-      const title = await this.#popupTitleRect();
-      listTop = title
-        ? title.loc.y + title.size.height + LIST_GAP
-        : height - 89 - LIST_HEIGHT;
-    }
-    const y = Math.round(listTop + ROW_STRIDE * index + ROW_STRIDE / 2);
-    ui.log('BranchPopup', `Tap branch row ${index} at ${x},${y}`);
-    await ui.pressAt(x, y);
-  }
-
-  async #tapSave() {
-    const { width, height } = await browser.getWindowSize();
-    const save = await this.#footerSave();
-    if (save) {
-      ui.log('BranchPopup', 'Click Save');
-      await ui.press(save);
-      return;
-    }
-    const x = Math.round(width / 2);
-    const y = Math.round(height - 62);
-    ui.log('BranchPopup', `Press Save at ${x},${y}`);
-    await ui.pressAt(x, y);
-  }
-
-  /**
-   * Footer Save — RN modal text is often isDisplayed=false. Use Y on screen.
-   */
-  async #footerSave() {
-    const { height } = await browser.getWindowSize();
-    const selectors = ui.isAndroid()
-      ? ['android=new UiSelector().text("Save")']
-      : [
-          '-ios predicate string:type == "XCUIElementTypeButton" AND (label == "Save" OR name == "Save")',
-          '-ios predicate string:label == "Save" OR name == "Save" OR value == "Save"',
-        ];
-    for (const sel of selectors) {
-      const els = await $$(sel);
-      for (const el of els) {
-        const loc = await el.getLocation().catch(() => null);
-        const size = await el.getSize().catch(() => null);
-        if (!loc || !size) {
-          continue;
-        }
-        if (size.height >= height * 0.4 || loc.y < height * 0.68) {
-          continue;
-        }
-        return el;
-      }
-    }
-    return null;
-  }
-
-  /**
-   * Next is a no-op while `isBranchListLoading` (NewPrescription.js).
+   * Short settle after store Save — skip XCUITest "Loading branches" scans.
    */
   async #waitLoadingIdle() {
-    const start = Date.now();
-    while (Date.now() - start < 3000) {
-      const loading =
-        (await ui.firstCaptionContains('Loading branches')) ||
-        (await ui.firstUsableContains('Loading branches'));
-      if (!loading) {
-        return;
-      }
-      await browser.pause(60);
-    }
+    await browser.pause(150);
   }
 }
 

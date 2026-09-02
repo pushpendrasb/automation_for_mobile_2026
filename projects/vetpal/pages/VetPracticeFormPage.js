@@ -86,7 +86,6 @@ class VetPracticeFormPage {
     const requested =
       Number.isFinite(Number(index)) && Number(index) >= 0 ? Number(index) : 0;
     ui.log('Provider', `Branch popup row=${requested}`);
-    await this.#waitBranchIdle();
     await SelectBranchPopupPage.selectAndSave(requested);
   }
 
@@ -105,30 +104,19 @@ class VetPracticeFormPage {
    */
   async clickNext() {
     ui.log('Request Treatment', 'Next (fixed footer)');
-    await this.#waitBranchIdle();
     await this.#tapFooterCta();
-    if (await ui.waitTrue(async () => !(await this.#stillOnStep1()), 1200)) {
-      return;
+    await browser.pause(250);
+    if (await this.#vetSelectStillShowing()) {
+      ui.log('Provider', 'Vet Practice still Select — open popup then Next');
+      await this.selectVetPractice();
+      await this.#tapFooterCta();
+      await browser.pause(250);
     }
-    if (await this.#branchPopupLikelyOpen()) {
-      ui.log('Provider', 'Branch popup after Next — row + Save');
+    if (await ui.saveExists()) {
+      ui.log('Provider', 'Sheet still open after Next — row + Save');
       await SelectBranchPopupPage.selectAndSave(providerData.branchIndex);
       await this.#tapFooterCta();
-      if (await ui.waitTrue(async () => !(await this.#stillOnStep1()), 1000)) {
-        return;
-      }
-    }
-    if (await this.#stillOnStep1()) {
-      ui.log('Provider', 'Still on step 1 after Next — retry practice/branch');
-      await this.selectVetPractice();
-      await this.selectBranch();
-      await this.#waitBranchIdle();
-      await this.#tapFooterCta();
-      if (await this.#branchPopupLikelyOpen()) {
-        await SelectBranchPopupPage.selectAndSave(providerData.branchIndex);
-        await this.#tapFooterCta();
-      }
-      await ui.waitTrue(async () => !(await this.#stillOnStep1()), 1000);
+      await browser.pause(250);
     }
   }
 
@@ -166,9 +154,10 @@ class VetPracticeFormPage {
     if (field) {
       await ui.press(field);
     } else {
-      await ui.tapContains('Animal Category', 5000);
+      const { width, height } = await browser.getWindowSize();
+      await ui.pressAt(Math.round(width / 2), Math.round(height * 0.28));
     }
-    await ui.waitTrue(() => CatPopupPage.isOpen(), 1200);
+    await ui.waitTrue(() => ui.saveExists(), 600);
     await CatPopupPage.selectRowAndSave(row);
   }
 
@@ -274,9 +263,15 @@ class VetPracticeFormPage {
     }
   }
 
-  async #stillOnStep1() {
+  /**
+   * Step 1 still showing — Next without a vet does not advance.
+   */
+  async #vetSelectStillShowing() {
     if (await ui.firstCaptionContains('Animal Category')) {
       return false;
+    }
+    if (await ui.firstCaption('Select')) {
+      return true;
     }
     return Boolean(
       (await ui.firstCaptionContains('New prescription request')) ||
@@ -293,32 +288,6 @@ class VetPracticeFormPage {
     const y = Math.round(height - 70);
     ui.log('Request Treatment', `Footer CTA at ${x},${y}`);
     await ui.pressAt(x, y);
-  }
-
-  /**
-   * Next is a no-op while branches are fetching (NewPrescription.js).
-   */
-  async #waitBranchIdle() {
-    const start = Date.now();
-    while (Date.now() - start < 3000) {
-      const loading =
-        (await ui.firstCaptionContains('Loading branches')) ||
-        (await ui.firstUsableContains('Loading branches'));
-      if (!loading) {
-        return;
-      }
-      await browser.pause(60);
-    }
-  }
-
-  /**
-   * Branch CatPopup after Next: still on step 1, Save footer instead of Next.
-   */
-  async #branchPopupLikelyOpen() {
-    if (await ui.firstCaptionContains('Animal Category')) {
-      return false;
-    }
-    return SelectBranchPopupPage.isOpen();
   }
 }
 

@@ -112,15 +112,67 @@ class Ui {
   }
 
   /**
-   * Poll until `check` is true. Returns false on timeout (does not throw).
-   * Use after opening/closing RN sheets so the next popup starts as soon as
-   * this one is ready — not after a fixed sleep.
-   * @param {() => Promise<boolean>} check
-   * @param {number} [timeout=1600] max wait in ms
-   * @param {number} [interval=40] poll interval in ms
+   * True when a Save footer sits on the lower band (step 1 CTA is Next).
+   * Ignore leftover Save nodes higher in the tree — those skipped the
+   * Vet Practice tap and left the field on "Select".
    * @returns {Promise<boolean>}
    */
-  async waitTrue(check, timeout = 1600, interval = 40) {
+  async saveExists() {
+    const { height } = await browser.getWindowSize();
+    const selector = this.isAndroid()
+      ? 'android=new UiSelector().text("Save")'
+      : '-ios predicate string:label == "Save" OR name == "Save"';
+    try {
+      const els = await $$(selector);
+      for (const el of els) {
+        const loc = await el.getLocation().catch(() => null);
+        if (loc && loc.y >= height * 0.62) {
+          return true;
+        }
+      }
+    } catch {
+      // ignore
+    }
+    return false;
+  }
+
+  /**
+   * Tap list row `index` then the Save footer by layout (no Appium find).
+   * CatPopup / SelectVetPopup: list height 350 above footer ~89.
+   * The recording showed sheets sitting open while we queried Save in the tree.
+   * @param {{ index?: number, rowStride?: number, listHeight?: number, footerHeight?: number }} [opts]
+   */
+  async tapSheetRowThenSave(opts = {}) {
+    const index =
+      Number.isFinite(Number(opts.index)) && Number(opts.index) >= 0
+        ? Number(opts.index)
+        : 0;
+    const rowStride = Number(opts.rowStride) > 0 ? Number(opts.rowStride) : 46;
+    const listHeight =
+      Number(opts.listHeight) > 0 ? Number(opts.listHeight) : 350;
+    const footerHeight =
+      Number(opts.footerHeight) > 0 ? Number(opts.footerHeight) : 89;
+    const { width, height } = await browser.getWindowSize();
+    const x = Math.round(width / 2);
+    const listTop = height - footerHeight - listHeight;
+    const rowY = Math.round(listTop + rowStride * index + rowStride / 2);
+    const saveY = Math.round(height - 62);
+    this.log('UI', `Sheet row ${index} at ${x},${rowY} then Save ${x},${saveY}`);
+    await this.pressAt(x, rowY);
+    await browser.pause(50);
+    await this.pressAt(x, saveY);
+    await browser.pause(120);
+  }
+
+  /**
+   * Poll until `check` is true. Returns false on timeout (does not throw).
+   * Prefer `saveExists` as the check — it is one $$ not a location walk.
+   * @param {() => Promise<boolean>} check
+   * @param {number} [timeout=600]
+   * @param {number} [interval=40]
+   * @returns {Promise<boolean>}
+   */
+  async waitTrue(check, timeout = 600, interval = 40) {
     const start = Date.now();
     if (await check()) {
       return true;
@@ -174,28 +226,13 @@ class Ui {
   }
 
   /**
-   * Press an element's center (click, then W3C touch).
+   * Press an element's center with one touch (no click + tap combo).
    * @param {WebdriverIO.Element} el
    */
   async press(el) {
     const loc = await el.getLocation();
     const size = await el.getSize();
-    const x = loc.x + size.width / 2;
-    const y = loc.y + size.height / 2;
-    try {
-      await el.click();
-    } catch {
-      // fall through
-    }
-    try {
-      await browser.execute('mobile: tap', {
-        elementId: el.elementId,
-        x: Math.round(size.width / 2),
-        y: Math.round(size.height / 2),
-      });
-    } catch {
-      await this.pressAt(x, y);
-    }
+    await this.pressAt(loc.x + size.width / 2, loc.y + size.height / 2);
   }
 
   /**

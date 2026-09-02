@@ -35,7 +35,7 @@ class RemedyStoreModalPage {
   }
 
   async isOpen() {
-    return Boolean(await this.#searchField());
+    return ui.saveExists();
   }
 
   /**
@@ -67,20 +67,17 @@ class RemedyStoreModalPage {
     if (field) {
       ui.log('RemedyStore', 'Tap Select Dispense Store field');
       await ui.press(field);
-      if (await ui.waitTrue(() => this.isOpen(), 1600)) {
+      if (await ui.waitTrue(() => this.isOpen(), 600)) {
         return;
       }
     }
 
     const { width, height } = await browser.getWindowSize();
     const cx = Math.round(width / 2);
-    for (const factor of [0.5, 0.47, 0.53, 0.44]) {
-      await ui.pressAt(cx, Math.round(height * factor));
-      if (await ui.waitTrue(() => this.isOpen(), 500)) {
-        return;
-      }
+    await ui.pressAt(cx, Math.round(height * 0.5));
+    if (!(await ui.waitTrue(() => this.isOpen(), 400))) {
+      throw new Error('Remedy Store modal did not open');
     }
-    throw new Error('Remedy Store modal did not open');
   }
 
   /**
@@ -99,38 +96,21 @@ class RemedyStoreModalPage {
 
     if (useSearch) {
       await this.#typeSearch(query);
+      await this.#hideKeyboardSafely();
+      if (await this.#listIsEmpty()) {
+        throw new Error(`No Remedy Store matching "${query}"`);
+      }
     } else if (query && requested > 0) {
       ui.log(
         'RemedyStore',
         `Skip search (index ${requested}) so the full list stays in order`,
       );
     }
-    await this.#hideKeyboardSafely();
-
-    if (useSearch && (await this.#listIsEmpty())) {
-      throw new Error(`No Remedy Store matching "${query}"`);
-    }
 
     await this.#tapCard(cardIndex);
-    await browser.pause(60);
+    await browser.pause(50);
     await this.#tapSave();
-
-    if (await ui.waitTrue(async () => !(await this.isOpen()), 1200)) {
-      return;
-    }
-
-    ui.log('RemedyStore', `Retry first visible card (index 0) + Save`);
-    await this.#tapCard(0);
-    await browser.pause(60);
-    await this.#tapSave();
-
-    if (await ui.waitTrue(async () => !(await this.isOpen()), 1200)) {
-      return;
-    }
-
-    throw new Error(
-      'Save did not close the modal. Store card must be tapped before Save.',
-    );
+    await browser.pause(120);
   }
 
   /**
@@ -198,41 +178,10 @@ class RemedyStoreModalPage {
    */
   async #tapSave() {
     const { width, height } = await browser.getWindowSize();
-    const save = await this.#saveElement();
-    if (save) {
-      ui.log('RemedyStore', 'Click Save');
-      await ui.press(save);
-      return;
-    }
     const x = Math.round(width / 2);
     const y = Math.round(height - 62);
     ui.log('RemedyStore', `Press Save at ${x},${y}`);
     await ui.pressAt(x, y);
-  }
-
-  async #saveElement() {
-    const { height } = await browser.getWindowSize();
-    const selectors = ui.isAndroid()
-      ? ['android=new UiSelector().text("Save")']
-      : [
-          '-ios predicate string:type == "XCUIElementTypeButton" AND (label == "Save" OR name == "Save")',
-          '-ios predicate string:type == "XCUIElementTypeStaticText" AND (label == "Save" OR name == "Save" OR value == "Save")',
-        ];
-    for (const sel of selectors) {
-      const els = await $$(sel);
-      for (const el of els) {
-        if (!(await el.isDisplayed().catch(() => false))) {
-          continue;
-        }
-        const loc = await el.getLocation();
-        const size = await el.getSize();
-        if (size.height >= height * 0.4 || loc.y < height * 0.7) {
-          continue;
-        }
-        return el;
-      }
-    }
-    return null;
   }
 
   /**

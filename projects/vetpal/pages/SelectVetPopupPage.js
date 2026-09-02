@@ -5,33 +5,37 @@
  * - Exactly one subscribed vet → field auto-fills full_name. Do not open this popup.
  * - Two or more vets → field stays "Select". Tap the field, pick a row, Save.
  *
- * There is no search box (unlike RemedyStoreModal). Selection is the same
- * pattern as the store modal: open sheet → tap row at index → Save.
+ * There is no search box (unlike RemedyStoreModal). Open sheet → tap row → Save.
+ * Save with no row selected is a no-op (`selectedServicesList` stays empty).
  *
- * Rows are TouchableOpacity (title + address). Labels are often missing from
- * XCUITest. Tap by position. Save with no row selected is a no-op.
+ * Layout (unlike CatPopup): the white sheet sizes to the list. Overlay is
+ * `flex:1` above it — a tap there closes the sheet with no selection.
+ * Save sits *inside* the sheet (`bottomButtonsBG` height 55), not in a
+ * separate 350px list + footer. Do not use `tapSheetRowThenSave` here.
  *
- * Layout: dismiss overlay, white sheet (title + list), footer Save (height 55).
+ * Rows: TouchableOpacity (title + address). Tap the row body, not overlay.
  */
 const { ui } = require('./ui');
 const { nameVariants } = require('../data/providerData');
 
+/** Separator under the sheet title (marginTop 12 + 1px line). */
+const LIST_GAP = 13;
+
 /** Title line + address + 8px ItemSeparator (~60px). */
 const ROW_STRIDE = 60;
-/** Title bottom → first row: separator marginTop 12 + 1px line. */
-const LIST_GAP = 13;
 
 class SelectVetPopupPage {
   /**
-   * Sheet is open when the footer Save sits on the lower band (step 1 CTA is
-   * Next). Prefer Save over the form title so we don't wait on extra queries.
+   * Sheet is open when a Save control exists (step 1 CTA is Next).
    */
   async isOpen() {
-    return Boolean(await this.#footerSave());
+    return ui.saveExists();
   }
 
   /**
-   * Skip only when the field already shows this practice name (one-vet auto-fill).
+   * Skip only when the gray field already shows this practice name.
+   * "Select" is often not a tappable XCUITest node — if it is in the tree,
+   * the popup is still needed. Do not match the name anywhere else on screen.
    * @param {string} practiceName
    */
   async isPracticeAlreadyOnForm(practiceName) {
@@ -45,11 +49,19 @@ class SelectVetPopupPage {
     if (!name) {
       return false;
     }
+    const title = await this.#formTitleRect();
+    const minY = title ? title.loc.y : 0;
+    const { height } = await browser.getWindowSize();
+    const maxY = Math.min(minY + 90, height * 0.5);
     for (const variant of nameVariants(name)) {
-      if (
+      const el =
         (await ui.firstCaptionContains(variant)) ||
-        (await ui.firstUsableContains(variant))
-      ) {
+        (await ui.firstUsableContains(variant));
+      if (!el) {
+        continue;
+      }
+      const loc = await el.getLocation().catch(() => null);
+      if (loc && loc.y >= minY && loc.y <= maxY) {
         return true;
       }
     }
@@ -57,30 +69,30 @@ class SelectVetPopupPage {
   }
 
   /**
-   * Tap the gray Select (or filled value) **under** the green "Vet Practice"
-   * label — not the hero subtitle and not the label itself.
+   * Tap the gray **Select** row under the green "Vet Practice" label.
+   * Do not click the "Select" StaticText (not clickable). Tap the row body.
    */
   async openFromForm() {
     if (await this.isOpen()) {
       return;
     }
 
-    await this.#tapSelectField();
-    if (await ui.waitTrue(() => this.isOpen(), 1600)) {
+    await this.#tapSelectRow();
+    if (await ui.waitTrue(() => this.isOpen(), 800)) {
       return;
     }
-
-    await this.#tapSelectFieldFallbacks();
-    if (await ui.waitTrue(() => this.isOpen(), 1000)) {
-      return;
+    await this.#tapSelectRowOffsets();
+    if (!(await ui.waitTrue(() => this.isOpen(), 600))) {
+      throw new Error('Vet Practice popup did not open');
     }
-    throw new Error('Vet Practice popup did not open');
   }
 
   /**
-   * Gray placeholder / value row under TitleView. hitSlop={30} on the field.
+   * formField is minHeight 52, marginTop 4 under TitleView.
+   * Cap title height — XCUITest may report a tall container, and
+   * title.bottom + 26 then misses the row (taps the hint or the store).
    */
-  async #tapSelectField() {
+  async #tapSelectRow() {
     const { width, height } = await browser.getWindowSize();
     const x = Math.round(width / 2);
 
@@ -88,26 +100,18 @@ class SelectVetPopupPage {
     if (placeholder) {
       const loc = await placeholder.getLocation();
       const size = await placeholder.getSize();
-      const y = Math.round(loc.y + Math.min(size.height, 52) / 2);
-      ui.log('VetPopup', `Tap Select placeholder at ${x},${y}`);
+      // Text is not clickable — tap the row center under the label.
+      const y = Math.round(loc.y + Math.max(size.height, 40) / 2 + 8);
+      ui.log('VetPopup', `Tap Select row body at ${x},${y}`);
       await ui.pressAt(x, y);
       return;
     }
 
     const formTitle = await this.#formTitleRect();
     if (formTitle) {
-      // formField: marginTop 4, minHeight 52 — center of the gray row
-      const y = Math.round(formTitle.loc.y + formTitle.size.height + 4 + 26);
-      ui.log('VetPopup', `Tap gray field below title at ${x},${y}`);
-      await ui.pressAt(x, y);
-      return;
-    }
-
-    const hint = await ui.firstCaptionContains('Go to My Vet Practice');
-    if (hint) {
-      const loc = await hint.getLocation();
-      const y = Math.round(loc.y - 72);
-      ui.log('VetPopup', `Tap field above hint at ${x},${y}`);
+      const titleH = Math.min(formTitle.size.height, 22);
+      const y = Math.round(formTitle.loc.y + titleH + 4 + 26);
+      ui.log('VetPopup', `Tap gray Select row below title at ${x},${y}`);
       await ui.pressAt(x, y);
       return;
     }
@@ -118,26 +122,21 @@ class SelectVetPopupPage {
   }
 
   /**
-   * Extra taps if the first miss hit the title or the hint card.
+   * Extra Y offsets if the first tap hit the title or the hint card.
    */
-  async #tapSelectFieldFallbacks() {
+  async #tapSelectRowOffsets() {
     const { width } = await browser.getWindowSize();
     const x = Math.round(width / 2);
     const formTitle = await this.#formTitleRect();
-    const ys = [];
-    if (formTitle) {
-      const top = formTitle.loc.y + formTitle.size.height;
-      ys.push(Math.round(top + 20), Math.round(top + 36), Math.round(top + 50));
+    if (!formTitle) {
+      return;
     }
-    const hint = await ui.firstCaptionContains('Go to My Vet Practice');
-    if (hint) {
-      const loc = await hint.getLocation();
-      ys.push(Math.round(loc.y - 90), Math.round(loc.y - 55));
-    }
-    for (const y of ys) {
-      ui.log('VetPopup', `Retry field tap at y=${y}`);
+    const top = formTitle.loc.y + Math.min(formTitle.size.height, 22);
+    for (const extra of [20, 36, 52, 68]) {
+      const y = Math.round(top + extra);
+      ui.log('VetPopup', `Retry Select row at y=${y}`);
       await ui.pressAt(x, y);
-      if (await ui.waitTrue(() => this.isOpen(), 400)) {
+      if (await ui.waitTrue(() => this.isOpen(), 350)) {
         return;
       }
     }
@@ -170,24 +169,20 @@ class SelectVetPopupPage {
   }
 
   /**
-   * Green TitleView only (exact). Ignore hero CONTAINS "vet practice".
+   * Smallest exact "Vet Practice" in the upper half (the TitleView label,
+   * not a tall container).
    */
   async #formTitleRect() {
     const { height } = await browser.getWindowSize();
     const rects = await this.#exactVetPracticeRects();
     const upper = rects
-      .filter(t => t.loc.y < height * 0.5)
-      .sort((a, b) => a.loc.y - b.loc.y);
-    return upper[0] || null;
-  }
-
-  async #popupTitleRect() {
-    const { height } = await browser.getWindowSize();
-    const rects = await this.#exactVetPracticeRects();
-    const lower = rects
-      .filter(t => t.loc.y > height * 0.35)
-      .sort((a, b) => b.loc.y - a.loc.y);
-    return lower[0] || null;
+      .filter(t => t.loc.y < height * 0.5 && t.size.height < 80)
+      .sort((a, b) => a.size.height - b.size.height || a.loc.y - b.loc.y);
+    return (
+      upper[0] ||
+      rects.filter(t => t.loc.y < height * 0.5).sort((a, b) => a.loc.y - b.loc.y)[0] ||
+      null
+    );
   }
 
   /**
@@ -212,9 +207,22 @@ class SelectVetPopupPage {
   }
 
   /**
-   * Tap list row then Save — same rules as Remedy Store.
-   * Index 0 + name: tap matching row in the sheet if the label is in the tree.
-   * Index > 0: tap that row on the full list (no name lookup).
+   * Sheet title — the lower exact "Vet Practice" (y > 35% of screen).
+   * The form TitleView sits in the upper half and must not be used for row Y.
+   */
+  async #popupTitleRect() {
+    const { height } = await browser.getWindowSize();
+    const rects = await this.#exactVetPracticeRects();
+    const lower = rects
+      .filter(t => t.loc.y > height * 0.35 && t.size.height < 80)
+      .sort((a, b) => b.loc.y - a.loc.y);
+    return lower[0] || null;
+  }
+
+  /**
+   * Tap the practice row (by index, or by name when index is 0), wait for
+   * React `selectedList`, then tap **sheet** Save. Retry once if the field
+   * is still "Select" (Save with no row is a no-op; overlay tap dismisses).
    * @param {string} [practiceName]
    * @param {number} [index=0]
    */
@@ -222,53 +230,88 @@ class SelectVetPopupPage {
     const requested =
       Number.isFinite(Number(index)) && Number(index) >= 0 ? Number(index) : 0;
     const name = String(practiceName || '').trim();
-    const useName = Boolean(name) && requested === 0;
 
-    if (useName) {
-      const matched = await this.#tapNamedRow(name);
-      if (matched) {
-        await this.#saveAndWaitClosed();
+    await ui.waitTrue(() => this.isOpen(), 800);
+
+    for (let attempt = 0; attempt < 2; attempt++) {
+      if (!(await this.isOpen())) {
+        ui.log('VetPopup', 'Sheet closed before row tap — reopen');
+        await this.openFromForm();
+      }
+      await this.#tapPracticeRow(name, requested, attempt);
+      await browser.pause(150);
+      await this.#tapSheetSave();
+      const filled = await ui.waitTrue(async () => {
+        if (await this.isOpen()) {
+          return false;
+        }
+        return !(await this.#selectPlaceholder());
+      }, 900);
+      if (filled) {
         return;
       }
-      ui.log('VetPopup', `Name not in tree — tap row ${requested}`);
-    } else if (name && requested > 0) {
-      ui.log(
-        'VetPopup',
-        `Skip name (index ${requested}) so the full list stays in order`,
-      );
-    }
-
-    await this.#tapRow(requested);
-    await this.#saveAndWaitClosed();
-  }
-
-  async #saveAndWaitClosed() {
-    await browser.pause(60);
-    await this.#tapSave();
-    if (await ui.waitTrue(async () => !(await this.isOpen()), 1200)) {
-      return;
-    }
-    ui.log('VetPopup', 'Retry row 0 + Save');
-    await this.#tapRow(0);
-    await browser.pause(60);
-    await this.#tapSave();
-    if (!(await ui.waitTrue(async () => !(await this.isOpen()), 1200))) {
-      throw new Error(
-        'Save did not close the Vet Practice popup. A list row must be tapped before Save.',
-      );
+      ui.log('VetPopup', `Row ${requested} did not stick — retry`);
     }
   }
 
   /**
-   * @param {string} needle
+   * Index > 0 always uses layout (name would hit a different row).
+   * Index 0 may tap a visible name under the sheet title.
+   * @param {string} name
+   * @param {number} index
+   * @param {number} [nudge=0] extra px down on retry
+   */
+  async #tapPracticeRow(name, index, nudge = 0) {
+    const title = await this.#popupTitleRect();
+    if (
+      index === 0 &&
+      name &&
+      nudge === 0 &&
+      (await this.#tapNamedRowBelowTitle(name, title))
+    ) {
+      return;
+    }
+
+    const { width, height } = await browser.getWindowSize();
+    const x = Math.round(width / 2);
+
+    if (title) {
+      const titleH = Math.min(title.size.height, 28);
+      const listTop = title.loc.y + titleH + LIST_GAP;
+      const rowY = Math.round(
+        listTop + ROW_STRIDE * index + ROW_STRIDE / 2 + nudge * 16,
+      );
+      // Overlay is everything above the white sheet — never tap there.
+      const minY = Math.round(title.loc.y + titleH + 8);
+      const y = Math.max(rowY, minY);
+      ui.log(
+        'VetPopup',
+        `Tap practice row ${index} at ${x},${y} (sheet title y=${Math.round(title.loc.y)})`,
+      );
+      await ui.pressAt(x, y);
+      return;
+    }
+
+    // Sheet is pinned to the bottom; stay in the lower band (not overlay).
+    const y = Math.round(height * 0.8 + ROW_STRIDE * index + nudge * 16);
+    ui.log('VetPopup', `Tap practice row ${index} fallback at ${x},${y}`);
+    await ui.pressAt(x, y);
+  }
+
+  /**
+   * Practice names are often in the iOS tree on this sheet. Tap the row body
+   * (StaticText itself is not the TouchableOpacity).
+   * @param {string} name
+   * @param {{ loc: { y: number }, size: { height: number } }|null} title
    * @returns {Promise<boolean>}
    */
-  async #tapNamedRow(needle) {
-    const sheet = await this.#popupTitleRect();
-    const minY = sheet
-      ? sheet.loc.y
-      : Math.round((await browser.getWindowSize()).height * 0.4);
-    for (const variant of nameVariants(needle)) {
+  async #tapNamedRowBelowTitle(name, title) {
+    const { width, height } = await browser.getWindowSize();
+    const minY = title
+      ? title.loc.y + Math.min(title.size.height, 28)
+      : height * 0.4;
+    const x = Math.round(width / 2);
+    for (const variant of nameVariants(name)) {
       const el =
         (await ui.firstCaptionContains(variant)) ||
         (await ui.firstUsableContains(variant));
@@ -276,74 +319,48 @@ class SelectVetPopupPage {
         continue;
       }
       const loc = await el.getLocation().catch(() => null);
+      const size = await el.getSize().catch(() => null);
       if (!loc || loc.y < minY) {
         continue;
       }
-      ui.log('VetPopup', `Tap name "${variant}" at y=${loc.y}`);
-      await ui.press(el);
+      const y = Math.round(loc.y + Math.max(size ? size.height : 20, 20) / 2);
+      ui.log('VetPopup', `Tap named practice "${variant}" at ${x},${y}`);
+      await ui.pressAt(x, y);
       return true;
     }
     return false;
   }
 
   /**
-   * @param {number} index
+   * Save on the sheet (below the popup title). Do not tap Next on the form.
    */
-  async #tapRow(index) {
+  async #tapSheetSave() {
+    const title = await this.#popupTitleRect();
     const { width, height } = await browser.getWindowSize();
     const x = Math.round(width / 2);
-    const title = await this.#popupTitleRect();
-    let y;
-    if (title) {
-      const listTop = title.loc.y + title.size.height + LIST_GAP;
-      y = Math.round(listTop + ROW_STRIDE * index + ROW_STRIDE / 2);
-    } else {
-      y = Math.round(height * 0.55 + ROW_STRIDE * index);
-    }
-    ui.log('VetPopup', `Tap practice row ${index} at ${x},${y}`);
-    await ui.pressAt(x, y);
-  }
+    const minY = title ? title.loc.y : height * 0.5;
 
-  async #tapSave() {
-    const { width, height } = await browser.getWindowSize();
-    const save = await this.#footerSave();
-    if (save) {
-      ui.log('VetPopup', 'Click Save');
-      await ui.press(save);
+    const selector = ui.isAndroid()
+      ? 'android=new UiSelector().text("Save")'
+      : '-ios predicate string:label == "Save" OR name == "Save"';
+    const els = await $$(selector);
+    for (const el of els) {
+      const loc = await el.getLocation().catch(() => null);
+      const size = await el.getSize().catch(() => null);
+      if (!loc || loc.y < minY) {
+        continue;
+      }
+      const y = Math.round(loc.y + (size ? size.height / 2 : 20));
+      ui.log('VetPopup', `Tap sheet Save at ${x},${y}`);
+      await ui.pressAt(x, y);
       return;
     }
-    const x = Math.round(width / 2);
-    const y = Math.round(height - 62);
-    ui.log('VetPopup', `Press Save at ${x},${y}`);
-    await ui.pressAt(x, y);
-  }
 
-  /**
-   * Footer Save — RN modal text is often isDisplayed=false. Use Y on screen.
-   */
-  async #footerSave() {
-    const { height } = await browser.getWindowSize();
-    const selectors = ui.isAndroid()
-      ? ['android=new UiSelector().text("Save")']
-      : [
-          '-ios predicate string:type == "XCUIElementTypeButton" AND (label == "Save" OR name == "Save")',
-          '-ios predicate string:label == "Save" OR name == "Save" OR value == "Save"',
-        ];
-    for (const sel of selectors) {
-      const els = await $$(sel);
-      for (const el of els) {
-        const loc = await el.getLocation().catch(() => null);
-        const size = await el.getSize().catch(() => null);
-        if (!loc || !size) {
-          continue;
-        }
-        if (size.height >= height * 0.4 || loc.y < height * 0.68) {
-          continue;
-        }
-        return el;
-      }
+    if (await this.isOpen()) {
+      const saveY = Math.round(height - 62);
+      ui.log('VetPopup', `Tap sheet Save layout at ${x},${saveY}`);
+      await ui.pressAt(x, saveY);
     }
-    return null;
   }
 }
 
