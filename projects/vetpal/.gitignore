@@ -1,0 +1,7 @@
+.env
+node_modules/
+reports/*.html
+reports/*.json
+reports/*.xml
+screenshots/*.png
+package-lock.json

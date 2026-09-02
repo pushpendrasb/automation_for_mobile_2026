@@ -1,0 +1,235 @@
+/**
+ * Animal Identification Matrix — from Vet-Pal Animal Owner source, not invented.
+ *
+ * Sources:
+ * - src/Screens/CustomPopup/animalIdentificationUtils.js
+ *   CATEGORY.HORSE | LIVESTOCK | POULTRY, TAG_SLOT_COUNT=4, MIN_GROUP_ANIMAL_COUNT=5
+ * - src/Screens/Components/AnimalIdentificationExpandable.js
+ *   Horse tags: Name N + Tag/ID N
+ *   Livestock tags: Tag/ID 1–4
+ *   Poultry tags: Tag/ID + Age + Age unit
+ *   Group (all): Group name + No. of animals (min 5)
+ *   Poultry group extra: Average age + Age unit
+ * - Defaults: Pig & Poultry open in Group; Horse/Cattle/Sheep/Goat/Deer open in Tag/ID
+ *
+ * Picker labels are API-built (`Horses - Horses`, `Cattle - Dairy`, …).
+ * Tests match the category token, not a hard-coded subtype.
+ */
+
+const { providerData } = require('./providerData');
+
+const TAG_SLOT_COUNT = 4;
+const MIN_GROUP_ANIMALS = 5;
+
+/**
+ * Ordered Request Treatment categories (prompt §4 / §12).
+ * @type {Array<Record<string, unknown>>}
+ */
+const animalCategories = [
+  {
+    key: 'Horse',
+    pickerContains: 'Horses',
+    pickerRowIndex: 0,
+    layout: 'horse',
+    defaultMode: 'tags',
+    identification: {
+      mode: 'tags',
+      names: ['HORSE-AUTO-001', 'HORSE-AUTO-002', 'HORSE-AUTO-003'],
+      tags: ['H001', 'H002', 'H003'],
+    },
+    fields: {
+      screen: 'New Request → Animal Details (inline AnimalIdentificationExpandable)',
+      tagFields: ['Name 1–4 (required)', 'Tag/ID 1–4 (optional, no special chars)'],
+      groupFields: ['GROUP NAME', 'NO. OF ANIMALS (min 5)'],
+      defaultMode: 'Tag/ID',
+      multiple: '4 tag slots always visible; Group has Add More',
+      requiredTag: 'Animal name required; tag optional',
+    },
+  },
+  {
+    key: 'Cattle',
+    pickerContains: 'Cattle',
+    pickerRowIndex: 1,
+    layout: 'livestock',
+    defaultMode: 'tags',
+    identification: {
+      mode: 'tags',
+      tags: ['CATTLE-001', 'CATTLE-002', 'CATTLE-003'],
+    },
+    fields: {
+      screen: 'New Request → Animal Details',
+      tagFields: ['Tag/ID 1–4 (tag required)'],
+      groupFields: ['GROUP NAME', 'NO. OF ANIMALS (min 5)'],
+      defaultMode: 'Tag/ID',
+      multiple: '4 tag slots; Group Add More',
+      requiredTag: 'Tag number is required',
+    },
+  },
+  {
+    key: 'Sheep',
+    pickerContains: 'Sheep',
+    pickerRowIndex: 3,
+    layout: 'livestock',
+    defaultMode: 'tags',
+    identification: {
+      mode: 'tags',
+      tags: ['SHEEP-001', 'SHEEP-002', 'SHEEP-003'],
+    },
+    fields: {
+      screen: 'New Request → Animal Details',
+      tagFields: ['Tag/ID 1–4 (tag required)'],
+      groupFields: ['GROUP NAME', 'NO. OF ANIMALS (min 5)'],
+      defaultMode: 'Tag/ID',
+      multiple: '4 tag slots; Group Add More',
+      requiredTag: 'Tag number is required',
+    },
+  },
+  {
+    key: 'Goat',
+    pickerContains: 'Goat',
+    pickerRowIndex: 4,
+    layout: 'livestock',
+    defaultMode: 'tags',
+    identification: {
+      mode: 'tags',
+      tags: ['GOAT-001', 'GOAT-002', 'GOAT-003'],
+    },
+    fields: {
+      screen: 'New Request → Animal Details',
+      tagFields: ['Tag/ID 1–4 (tag required)'],
+      groupFields: ['GROUP NAME', 'NO. OF ANIMALS (min 5)'],
+      defaultMode: 'Tag/ID',
+      multiple: '4 tag slots; Group Add More',
+      requiredTag: 'Tag number is required',
+    },
+  },
+  {
+    key: 'Deer',
+    pickerContains: 'Deer',
+    pickerRowIndex: 5,
+    layout: 'livestock',
+    defaultMode: 'tags',
+    identification: {
+      mode: 'tags',
+      tags: ['DEER-001', 'DEER-002', 'DEER-003'],
+    },
+    fields: {
+      screen: 'New Request → Animal Details',
+      tagFields: ['Tag/ID 1–4 (tag required)'],
+      groupFields: ['GROUP NAME', 'NO. OF ANIMALS (min 5)'],
+      defaultMode: 'Tag/ID',
+      multiple: '4 tag slots; Group Add More',
+      requiredTag: 'Tag number is required',
+    },
+  },
+  {
+    key: 'Pig',
+    pickerContains: 'Pig',
+    pickerRowIndex: 6,
+    layout: 'livestock',
+    defaultMode: 'group',
+    identification: {
+      mode: 'group',
+      groupName: 'PIG-AUTO-GROUP',
+      numberOfAnimals: String(MIN_GROUP_ANIMALS),
+    },
+    fields: {
+      screen: 'New Request → Animal Details',
+      tagFields: ['Tag/ID 1–4 if user switches to Tag/ID'],
+      groupFields: ['GROUP NAME (required)', 'NO. OF ANIMALS (min 5)'],
+      defaultMode: 'Group',
+      multiple: 'Add More extra groups',
+      requiredTag: 'Group name + count ≥ 5',
+    },
+  },
+  {
+    key: 'Poultry',
+    pickerContains: 'Poultry',
+    pickerRowIndex: 7,
+    layout: 'poultry',
+    defaultMode: 'group',
+    identification: {
+      mode: 'group',
+      groupName: 'POULTRY-AUTO-GROUP',
+      numberOfAnimals: String(MIN_GROUP_ANIMALS),
+      averageAge: '12',
+      ageUnit: 'Days',
+    },
+    fields: {
+      screen: 'New Request → Animal Details',
+      tagFields: ['Tag/ID + Age + Age unit if Tag/ID mode'],
+      groupFields: [
+        'GROUP NAME',
+        'NO. OF ANIMALS (min 5)',
+        'AVERAGE AGE (required, > 0)',
+        'AGE UNIT (required)',
+      ],
+      defaultMode: 'Group',
+      multiple: 'Add More extra groups',
+      requiredTag: 'Group name, count ≥ 5, average age, age unit',
+    },
+  },
+];
+
+const requestTreatmentData = {
+  get provider() {
+    return {
+      vetPractice: providerData.vetPractice,
+      remedyStore: providerData.remedyStore,
+    };
+  },
+  get treatment() {
+    return { request: providerData.treatmentRequest };
+  },
+  animals: animalCategories,
+  tagSlotCount: TAG_SLOT_COUNT,
+  minGroupAnimals: MIN_GROUP_ANIMALS,
+  toasts: {
+    selectVet: 'Please select a vet practice',
+    selectRemedyStore: 'Please select Remedy Store',
+    selectNearbyStore: 'Please select a Remedy Store',
+    selectBranch: 'Please select Branch',
+    selectCategory: 'Please select animal category / type',
+    completeIdentification:
+      'Please complete animal identification before submitting your request',
+    enterTreatment: 'Please enter history or symptoms of animal',
+  },
+  labels: {
+    requestTreatment: 'Request Treatment',
+    requestVetAdvice: 'Request Vet Advice/Treatment',
+    chooseProvider: 'Choose a Provider',
+    vetPractice: 'Vet Practice',
+    nearbyRemedyStore: 'Nearby Remedy Store',
+    newRequest: 'New Request',
+    next: 'Next',
+    submitRequest: 'Submit Request',
+    submitRequestNow: 'Submit Request Now',
+    animalCategory: 'Animal Category/ Type',
+    animalIdentification: 'Animal Identification',
+    treatmentSection: 'Treatment/Product Request',
+    tagMode: 'Tag/ID',
+    groupMode: 'Group',
+    addMore: 'Add More',
+    branch: 'Branch',
+    dispenseStore: 'Remedy Store to Dispense',
+    step3: 'Step 3',
+  },
+};
+
+function categoryByKey(key) {
+  const found = animalCategories.find(
+    c => c.key.toLowerCase() === String(key).toLowerCase(),
+  );
+  if (!found) {
+    throw new Error(`Unknown animal category: ${key}`);
+  }
+  return found;
+}
+
+module.exports = {
+  animalCategories,
+  requestTreatmentData,
+  categoryByKey,
+  TAG_SLOT_COUNT,
+  MIN_GROUP_ANIMALS,
+};

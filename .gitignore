@@ -1,0 +1,12 @@
+node_modules/
+.DS_Store
+.env
+projects/*/.env
+projects/*/reports/*.html
+projects/*/reports/*.json
+projects/*/reports/*.jsonl
+projects/*/reports/*.xml
+projects/*/reports/.vetpal-report-*
+projects/*/screenshots/*.png
+/vetpal-report.html
+*.zip

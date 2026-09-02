@@ -1,0 +1,40 @@
+{
+  "name": "roskids-automation",
+  "version": "1.0.0",
+  "private": true,
+  "description": "RosKids Appium automation project (pages + tests only)",
+  "scripts": {
+    "test": "npm run test:ios",
+    "test:ios": "wdio run ./wdio.ios.conf.js",
+    "test:android": "wdio run ./wdio.android.conf.js",
+    "test:ios:signin": "wdio run ./wdio.ios.conf.js --spec ./tests/auth/signIn.positive.test.js --spec ./tests/auth/signIn.negative.test.js",
+    "test:ios:positive": "wdio run ./wdio.ios.conf.js --spec ./tests/auth/signIn.positive.test.js",
+    "test:ios:negative": "wdio run ./wdio.ios.conf.js --spec ./tests/auth/signIn.negative.test.js",
+    "test:ios:bookservice": "APPIUM_NO_RESET=true wdio run ./wdio.ios.conf.js --spec ./tests/booking/bookService.test.js",
+    "test:android:signin": "wdio run ./wdio.android.conf.js --spec ./tests/auth/signIn.positive.test.js --spec ./tests/auth/signIn.negative.test.js",
+    "test:android:positive": "wdio run ./wdio.android.conf.js --spec ./tests/auth/signIn.positive.test.js",
+    "test:android:negative": "wdio run ./wdio.android.conf.js --spec ./tests/auth/signIn.negative.test.js",
+    "test:android:bookservice": "APPIUM_NO_RESET=true wdio run ./wdio.android.conf.js --spec ./tests/booking/bookService.test.js",
+    "check:devices": "AUTOMATION_PROJECT_ROOT=. node ../../framework/utils/checkDevices.js",
+    "check:devices:ios": "AUTOMATION_PROJECT_ROOT=. node ../../framework/utils/checkDevices.js ios",
+    "check:devices:android": "AUTOMATION_PROJECT_ROOT=. node ../../framework/utils/checkDevices.js android",
+    "report:catalog": "node -e \"const p=require('./project.config');const c=require('@mobile-automation/appium-core/utils/testReport').createTestReport(require(p.catalogPath),{displayName:p.displayName,reportBaseName:p.reportBaseName});c.writeCatalogHtml(p.reportsDir);\"",
+    "report:open": "open ./reports/roskids-report.html || xdg-open ./reports/roskids-report.html",
+    "report:catalog:open": "npm run report:catalog && (open ./reports/test-catalog.html || xdg-open ./reports/test-catalog.html)"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "@mobile-automation/appium-core": "file:../../framework"
+  },
+  "devDependencies": {
+    "@wdio/cli": "^9.12.0",
+    "@wdio/junit-reporter": "^9.12.0",
+    "@wdio/local-runner": "^9.12.0",
+    "@wdio/mocha-framework": "^9.12.0",
+    "@wdio/spec-reporter": "^9.12.0",
+    "dotenv": "^16.4.7",
+    "webdriverio": "^9.12.0"
+  }
+}
