@@ -1,13 +1,16 @@
 /**
  * Vet Practice Request Summary (PrescriptionSummary.js).
- * Footer: Submit Request Now.
+ * Footer CTA is `summary.submitNow` — no text-hunting swipes.
  */
 const { ui } = require('./ui');
 const { requestTreatmentData } = require('../data/animalCategories');
 const { TEST_IDS } = require('../data/testIds');
 
 class RequestSummaryPage {
-  async verifyRequestSummary(opts = {}) {
+  /**
+   * Wait for the summary footer, then swipe once so the list/footer settles.
+   */
+  async verifyRequestSummary(_opts = {}) {
     await browser.waitUntil(
       async () => Boolean(await ui.firstByTestId(TEST_IDS.summary.submitNow)),
       {
@@ -17,28 +20,15 @@ class RequestSummaryPage {
           'Request Summary (summary.submitNow) not displayed — rebuild/reinstall the Vet Pal app',
       },
     );
+    ui.log('Summary', 'Swipe once');
+    await ui.swipeUp();
+    await browser.pause(200);
     await ui.screenshot('request-summary');
-
-    if (opts.category) {
-      const shown = await ui.byContainsText(opts.category);
-      if (!(await ui.isShown(shown))) {
-        ui.log(
-          'Summary',
-          `Category "${opts.category}" not found as visible text — still on summary`,
-        );
-      }
-    }
-    if (opts.vetPractice) {
-      await ui.scrollToText(opts.vetPractice).catch(() => {});
-    }
-    if (opts.remedyStore) {
-      await ui.scrollToText(opts.remedyStore).catch(() => {});
-    }
-    if (opts.treatment) {
-      await ui.scrollToText(opts.treatment).catch(() => {});
-    }
   }
 
+  /**
+   * Tap Submit Request Now after the single summary swipe.
+   */
   async clickSubmitRequestNow() {
     ui.log('Request Treatment', 'Submit Request Now (summary.submitNow)');
     await ui.requireTapTestId(TEST_IDS.summary.submitNow);

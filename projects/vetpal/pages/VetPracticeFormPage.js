@@ -212,6 +212,14 @@ class VetPracticeFormPage {
   async clickSubmitRequest() {
     ui.log('Request Treatment', 'Submit Request (rt.submit)');
     await ui.dismissKeyboard();
+    try {
+      await browser.waitUntil(
+        async () => !(await browser.isKeyboardShown()),
+        { timeout: 2500, interval: 120 },
+      );
+    } catch {
+      await ui.dismissKeyboard();
+    }
     await ui.requireTapTestId(TEST_IDS.requestTreatment.submit);
   }
 

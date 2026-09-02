@@ -589,9 +589,11 @@ class Ui {
   }
 
   /**
-   * Dismiss the iOS keyboard. Never call `mobile: hideKeyboard` — WDA cannot
-   * dismiss KeyboardToolbar and WebdriverIO retries each failure ~4s × 3.
-   * Tap `keyboard.toolbar.done` (already on KeyboardToolbar.Done).
+   * Dismiss the iOS keyboard after Treatment Request (multiline).
+   * Never call `mobile: hideKeyboard` (WDA retries ~12s). Never press Return
+   * — this field is multiline, so Return inserts a newline and the keyboard stays.
+   * Tap KeyboardToolbar Done; if it is not in the tree, tap just above the
+   * keyboard element on the Done side (the accessory bar, not the screen size).
    */
   async dismissKeyboard() {
     if (this.isAndroid()) {
@@ -612,14 +614,72 @@ class Ui {
     }
 
     if (await this.tapTestId(TEST_IDS.keyboard.done)) {
-      await browser.pause(120);
+      await browser.pause(150);
       return;
     }
 
+    const doneLabel = await this.#firstDoneLabel();
+    if (doneLabel) {
+      this.log('UI', 'Tap keyboard Done label');
+      await doneLabel.click().catch(() => this.press(doneLabel));
+      await browser.pause(150);
+      return;
+    }
+
+    await this.#tapDoneAboveKeyboard();
+  }
+
+  /**
+   * KeyboardToolbar "Done" text when the testID is not in the snapshot.
+   * @returns {Promise<WebdriverIO.Element|null>}
+   */
+  async #firstDoneLabel() {
+    const selectors = [
+      `-ios predicate string:name == "${TEST_IDS.keyboard.done}" OR label == "${TEST_IDS.keyboard.done}"`,
+      '-ios predicate string:label == "Done" OR name == "Done"',
+      '-ios class chain:**/XCUIElementTypeStaticText[`label == "Done"`]',
+    ];
+    for (const sel of selectors) {
+      try {
+        const els = await $$(sel);
+        if (els[0]) {
+          return els[0];
+        }
+      } catch {
+        // next selector
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Accessory bar sits on top of XCUIElementTypeKeyboard. Done is the right
+   * control on that bar (KeyboardToolbar.Done). Uses the keyboard element's
+   * own rect — not getWindowSize.
+   */
+  async #tapDoneAboveKeyboard() {
+    let keyboard = null;
     try {
-      await browser.keys(['Return']);
+      const els = await $$(
+        '-ios class chain:**/XCUIElementTypeKeyboard',
+      );
+      keyboard = els[0] || null;
     } catch {
-      // keyboard may already be down
+      keyboard = null;
+    }
+    if (!keyboard) {
+      return;
+    }
+    try {
+      const loc = await keyboard.getLocation();
+      const size = await keyboard.getSize();
+      const x = loc.x + size.width - 36;
+      const y = loc.y - 22;
+      this.log('UI', `Tap Done above keyboard at ${Math.round(x)},${Math.round(y)}`);
+      await this.pressAt(x, y);
+      await browser.pause(150);
+    } catch {
+      // ignore
     }
   }
 
