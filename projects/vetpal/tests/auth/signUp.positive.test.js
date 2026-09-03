@@ -3,7 +3,10 @@
  * Edit inputs in data/signUpData.js (including profile + optional otp).
  *
  * P02 follows Login.js after register:
- *   Sign Up → OtpVerifyScreen → SignUpSuccess Ok → Sign In
+ *   Default Sign In → Sign Up tab once (never Sign In tab)
+ *   → fill form → Sign Up Now → OtpVerifyScreen (wait 20s; type OTP)
+ *   → Verify OTP → SignUpSuccess Ok
+ *   → Sign In Now (already on Sign In — do not tap the Sign In tab)
  *   → otp_status true → OTP again
  *   → is_profile_completed == '1' → Home
  *   → else → CreateProfile (fill) → Subscribe Skip Now → Home
@@ -15,7 +18,7 @@ const { signUpData } = require('../../data/signUpData');
 
 describe('Vet-Pal Sign Up — Positive', () => {
   beforeEach(async () => {
-    await LoginPage.resetAppToLoginScreen();
+    await LoginPage.resetAppToLoginScreen({ skipSignInTab: true });
     await SignUpPage.ensureSignUpMode();
   });
 
@@ -27,16 +30,18 @@ describe('Vet-Pal Sign Up — Positive', () => {
     console.log(
       `Sign Up from signUpData.js: ${signUpData.countryCode} ${signUpData.mobileNumber} / ${signUpData.email}`,
     );
+    // Email → mobile → password → confirm → hide keyboard → T&C checkbox
     await SignUpPage.fillValidForm();
     await SignUpPage.tapSignUpNow();
 
     const signedUp = await SignUpPage.isSignUpSuccessful(25000);
     if (!signedUp) {
       throw new Error(
-        'Did not reach Enter OTP. Email/mobile may already be registered — change email and mobile in data/signUpData.js',
+        'Did not reach Enter OTP. Check password + Confirm Password, T&C checkbox, and Sign Up Now. If an Error alert appeared, email/mobile may already be registered — change them in data/signUpData.js',
       );
     }
 
+    // 20s on Enter OTP (signUpData.otpWaitMs) — type the WhatsApp OTP on the device
     await SignUpPage.completeOtpAndGoToSignIn();
     const dest = await signInWithSignupCredentials();
     await landAfterLogin(dest);
@@ -48,7 +53,6 @@ describe('Vet-Pal Sign Up — Positive', () => {
  * @returns {Promise<'home'|'createProfile'|'otp'>}
  */
 async function signInWithSignupCredentials() {
-  await LoginPage.ensureSignInMode();
   await LoginPage.selectCountryCode(signUpData.countryCode);
   await LoginPage.enterMobile(signUpData.mobileNumber);
   await LoginPage.enterPassword(signUpData.password);

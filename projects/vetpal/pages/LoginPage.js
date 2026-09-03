@@ -282,20 +282,34 @@ class LoginPage {
   }
 
   /**
-   * Wait for the Sign In form after a cold start. Poll lightly so XCUITest
-   * snapshots do not delay the splash/login render.
+   * Wait until Login.js is showing (Sign In or Sign Up). Does not tap either
+   * tab — signup scripts must not bounce Sign In ↔ Sign Up.
+   * @param {number} [timeout=45000]
    */
-  async waitForLoginScreen(timeout = 45000) {
+  async waitForLoginForm(timeout = 45000) {
     await this.dismissNoInternetAlertIfPresent();
     await browser.waitUntil(
-      async () => this.isOnLoginScreenFast(),
+      async () =>
+        Boolean(
+          (await ui.firstByTestId(TEST_IDS.login.mobile)) ||
+            (await ui.firstByTestId(TEST_IDS.login.email)) ||
+            (await ui.firstByTestId(TEST_IDS.login.signUpTab)),
+        ),
       {
         timeout,
         interval: 500,
         timeoutMsg:
-          'Vet-Pal Sign In screen did not appear (mobile field not found). Check IOS_BUNDLE_ID / app install.',
+          'Vet-Pal Login screen did not appear (mobile / email / Sign Up tab not found). Check IOS_BUNDLE_ID / app install.',
       },
     );
+  }
+
+  /**
+   * Wait for the Sign In form after a cold start. Poll lightly so XCUITest
+   * snapshots do not delay the splash/login render.
+   */
+  async waitForLoginScreen(timeout = 45000) {
+    await this.waitForLoginForm(timeout);
     await this.ensureSignInMode();
   }
 
@@ -321,22 +335,30 @@ class LoginPage {
   }
 
   /**
-   * Restart the app only when we are not already on Sign In.
+   * Restart the app only when we are not already on Login.
    * If a previous test left us logged in (Home), logout instead of waiting
    * for a login form that will never appear (session is restored on activate).
    *
-   * @param {{ force?: boolean }} [opts]
+   * @param {{ force?: boolean, skipSignInTab?: boolean }} [opts]
+   *   skipSignInTab — signup specs: land on Login without tapping Sign In.
    */
   async resetAppToLoginScreen(opts = {}) {
     const force = Boolean(opts.force);
+    const skipSignInTab = Boolean(opts.skipSignInTab);
     if (!force && (await this.isOnLoginScreenFast())) {
-      await this.ensureSignInMode();
+      if (!skipSignInTab) {
+        await this.ensureSignInMode();
+      }
       return;
     }
 
     if (await this.#isHomeVisible()) {
       await this.#logoutFromHome();
-      await this.waitForLoginScreen(20000);
+      if (skipSignInTab) {
+        await this.waitForLoginForm(20000);
+      } else {
+        await this.waitForLoginScreen(20000);
+      }
       return;
     }
 
@@ -363,12 +385,18 @@ class LoginPage {
     const deadline = Date.now() + 45000;
     while (Date.now() < deadline) {
       if (await this.isOnLoginScreenFast()) {
-        await this.ensureSignInMode();
+        if (!skipSignInTab) {
+          await this.ensureSignInMode();
+        }
         return;
       }
       if (await this.#isHomeVisible()) {
         await this.#logoutFromHome();
-        await this.waitForLoginScreen(20000);
+        if (skipSignInTab) {
+          await this.waitForLoginForm(20000);
+        } else {
+          await this.waitForLoginScreen(20000);
+        }
         return;
       }
       await browser.pause(500);

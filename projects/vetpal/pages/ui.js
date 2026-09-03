@@ -178,11 +178,7 @@ class Ui {
       return false;
     }
     this.log('UI', `Tap testID ${id}`);
-    try {
-      await el.click();
-    } catch {
-      await this.press(el);
-    }
+    await el.click();
     return true;
   }
 
@@ -710,6 +706,67 @@ class Ui {
   }
 
   /**
+   * True when the iOS keypad or KeyboardToolbar accessory is showing.
+   * Do not rely only on XCUIElementTypeKeyboard — the accessory bar can
+   * stay up while the keypad is not in the snapshot.
+   * @returns {Promise<boolean>}
+   */
+  async isKeyboardVisible() {
+    try {
+      if (await browser.isKeyboardShown()) {
+        return true;
+      }
+    } catch {
+      // older driver
+    }
+    if (this.isAndroid()) {
+      return false;
+    }
+    try {
+      const els = await $$('-ios class chain:**/XCUIElementTypeKeyboard');
+      if (els.length > 0) {
+        return true;
+      }
+    } catch {
+      // ignore
+    }
+    if (await this.firstByTestId(TEST_IDS.keyboard.done)) {
+      return true;
+    }
+    return false;
+  }
+
+  /**
+   * Hide the keyboard so T&C / Sign Up Now are tappable.
+   * Prefer login.dismissKeyboard (hint above the keypad) because
+   * KeyboardToolbar.Done is often missing from the XCUITest tree.
+   * Never tap screen x/y or call mobile: hideKeyboard.
+   * @param {number} [maxTries=4]
+   */
+  async dismissKeyboardUntilGone(maxTries = 4) {
+    if (this.isAndroid()) {
+      await this.dismissKeyboard().catch(() => {});
+      return;
+    }
+
+    if (await this.tapTestId(TEST_IDS.login.dismissKeyboard)) {
+      await browser.pause(250);
+    }
+
+    await this.tapKeyboardDone();
+
+    for (let i = 0; i < maxTries; i += 1) {
+      if (!(await this.isKeyboardVisible())) {
+        return;
+      }
+      this.log('UI', 'Keyboard still visible — tap hint / Done again');
+      await this.tapTestId(TEST_IDS.login.dismissKeyboard);
+      await this.tapKeyboardDone();
+      await browser.pause(250);
+    }
+  }
+
+  /**
    * Tap KeyboardToolbar.Done. Do not use keyboard rect / screen coordinates.
    * includeNonModalElements lets XCUITest see the accessory toolbar.
    * @returns {Promise<boolean>}
@@ -732,7 +789,9 @@ class Ui {
       '-ios class chain:**/XCUIElementTypeKeyboard/**/XCUIElementTypeButton[`label == "Done"`]',
       '-ios class chain:**/XCUIElementTypeToolbar/**/XCUIElementTypeButton[`label == "Done"`]',
       '-ios class chain:**/XCUIElementTypeButton[`label == "Done"`]',
+      '-ios class chain:**/XCUIElementTypeStaticText[`label == "Done"`]',
       '-ios predicate string:type == "XCUIElementTypeButton" AND (label == "Done" OR name == "Done" OR value == "Done")',
+      '-ios predicate string:type == "XCUIElementTypeOther" AND (label == "Done" OR name == "Done")',
       '-ios predicate string:label == "Done" OR name == "Done" OR value == "Done"',
     ];
     for (const sel of selectors) {

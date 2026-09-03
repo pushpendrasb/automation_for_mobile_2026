@@ -8,7 +8,7 @@ const { signUpData } = require('../../data/signUpData');
 
 describe('Vet-Pal Sign Up — Negative', () => {
   beforeEach(async () => {
-    await LoginPage.resetAppToLoginScreen();
+    await LoginPage.resetAppToLoginScreen({ skipSignInTab: true });
     await SignUpPage.ensureSignUpMode();
   });
 
@@ -51,7 +51,7 @@ describe('Vet-Pal Sign Up — Negative', () => {
     await SignUpPage.enterMobile(signUpData.mobileNumber);
     await SignUpPage.enterPassword(signUpData.password);
     await SignUpPage.enterConfirmPassword(signUpData.mismatchConfirm);
-    await SignUpPage.tickTerms();
+    await SignUpPage.dismissKeyboardThenTickTerms();
     await SignUpPage.tapSignUpNow();
     await LoginPage.waitForToastContaining(
       signUpData.passwordMismatchToast,

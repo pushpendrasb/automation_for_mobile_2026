@@ -15,6 +15,8 @@ const TEST_IDS = {
     forgotPassword: 'login.forgotPassword',
     submit: 'login.submit',
     tncCheckbox: 'login.tncCheckbox',
+    /** Hint above the fields — tap dismisses keyboard. */
+    dismissKeyboard: 'login.dismissKeyboard',
     countryCode: 'login.countryCode',
     countrySave: 'login.countrySave',
     countryOption: code =>
@@ -85,11 +87,15 @@ const TEST_IDS = {
     next: 'keyboard.toolbar.next',
   },
   otp: {
+    /** OtpVerifyScreen.js — tap these IDs only, never screen x/y. */
+    title: 'otp.title',
     input: 'otp.input',
     verify: 'otp.verify',
+    resend: 'otp.resend',
   },
   signupSuccess: {
     ok: 'signupSuccess.ok',
+    resendEmail: 'signupSuccess.resendEmail',
   },
   placePicker: {
     search: 'placePicker.search',

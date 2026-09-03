@@ -36,8 +36,11 @@ const signUpData = {
   signUpButton: 'Sign Up Now',
   createAccountHint: 'Create an account to get started',
   otpTitle: 'Enter OTP',
-  /** Stay on Enter OTP so WhatsApp can deliver the code. */
-  otpWaitMs: Number(envOr('VETPAL_SIGNUP_OTP_WAIT_MS', '30000')) || 30000,
+  /**
+   * Pause on Enter OTP after Sign Up so WhatsApp can deliver the code and
+   * you can type it on the device. Default 20s.
+   */
+  otpWaitMs: Number(envOr('VETPAL_SIGNUP_OTP_WAIT_MS', '20000')) || 20000,
   /**
    * 6-digit WhatsApp OTP. Leave blank to type it on the device during the wait.
    * If set, P02 enters it and taps Verify OTP.
