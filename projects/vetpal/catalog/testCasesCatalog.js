@@ -2,6 +2,7 @@
  * Vet-Pal Animal Owner — test case catalog.
  */
 const { REQUEST_TREATMENT_TEST_CASES } = require('./requestTreatmentCatalog');
+const { SIGN_UP_TEST_CASES } = require('./signUpCatalog');
 
 /** @type {Array<Record<string, string | string[]>>} */
 const SIGN_IN_TEST_CASES = [
@@ -97,7 +98,11 @@ const SIGN_IN_TEST_CASES = [
   },
 ];
 
-const ALL_TEST_CASES = [...SIGN_IN_TEST_CASES, ...REQUEST_TREATMENT_TEST_CASES];
+const ALL_TEST_CASES = [
+  ...SIGN_IN_TEST_CASES,
+  ...SIGN_UP_TEST_CASES,
+  ...REQUEST_TREATMENT_TEST_CASES,
+];
 
 function findCaseByTitle(title) {
   const t = String(title || '');
@@ -114,6 +119,7 @@ function findCaseByTitle(title) {
 
 module.exports = {
   SIGN_IN_TEST_CASES,
+  SIGN_UP_TEST_CASES,
   REQUEST_TREATMENT_TEST_CASES,
   ALL_TEST_CASES,
   findCaseByTitle,

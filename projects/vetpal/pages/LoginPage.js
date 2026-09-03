@@ -95,15 +95,33 @@ class LoginPage {
    * Sign In tab only exists once Login.js has rendered. Wait for `login.mobile`
    * (already on Sign In) or `login.signInTab` (on Sign Up) — never tap the tab
    * against the splash tree.
+   *
+   * Sign Up also has `login.mobile`, so if `login.email` is present we are on
+   * Sign Up and must tap Sign In (Login.js defaults `isSignIn` to false).
    */
   async ensureSignInMode() {
+    if (await ui.firstByTestId(TEST_IDS.login.email)) {
+      await ui.requireTapTestId(TEST_IDS.login.signInTab);
+      await browser.waitUntil(
+        async () =>
+          Boolean(await ui.firstByTestId(TEST_IDS.login.mobile)) &&
+          !(await ui.firstByTestId(TEST_IDS.login.email)),
+        {
+          timeout: 5000,
+          interval: 150,
+          timeoutMsg: 'Sign In tab did not hide login.email',
+        },
+      );
+      return;
+    }
     if (await ui.firstByTestId(TEST_IDS.login.mobile)) {
       return;
     }
     await browser.waitUntil(
       async () =>
         Boolean(
-          (await ui.firstByTestId(TEST_IDS.login.mobile)) ||
+          (await ui.firstByTestId(TEST_IDS.login.email)) ||
+            (await ui.firstByTestId(TEST_IDS.login.mobile)) ||
             (await ui.firstByTestId(TEST_IDS.login.signInTab)),
         ),
       {
@@ -113,6 +131,20 @@ class LoginPage {
           'login.mobile / login.signInTab not found — wait for splash, or rebuild/reinstall the Vet Pal app',
       },
     );
+    if (await ui.firstByTestId(TEST_IDS.login.email)) {
+      await ui.requireTapTestId(TEST_IDS.login.signInTab);
+      await browser.waitUntil(
+        async () =>
+          Boolean(await ui.firstByTestId(TEST_IDS.login.mobile)) &&
+          !(await ui.firstByTestId(TEST_IDS.login.email)),
+        {
+          timeout: 5000,
+          interval: 150,
+          timeoutMsg: 'Sign In tab did not hide login.email',
+        },
+      );
+      return;
+    }
     if (await ui.firstByTestId(TEST_IDS.login.mobile)) {
       return;
     }
@@ -406,6 +438,67 @@ class LoginPage {
       throw new Error('Mobile number field not found');
     }
     await this.#typeInto(el, mobileNumber);
+  }
+
+  /**
+   * Sign In country picker — same IDs as Sign Up (`login.country.{code}`).
+   * @param {string} code e.g. '+91'
+   */
+  async selectCountryCode(code) {
+    await this.ensureSignInMode();
+    const wanted = String(code || '+353').trim();
+    await ui.requireTapTestId(TEST_IDS.login.countryCode);
+    await browser.pause(200);
+    await ui.requireTapTestId(TEST_IDS.login.countryOption(wanted));
+    await ui.requireTapTestId(TEST_IDS.login.countrySave);
+    await browser.pause(150);
+  }
+
+  /**
+   * Login.js after a 200/201:
+   * - otp_status true → OtpVerifyScreen
+   * - is_profile_completed == '1' → Home
+   * - else → CreateProfile
+   *
+   * @param {number} [timeout=25000]
+   * @returns {Promise<'home'|'createProfile'|'otp'>}
+   */
+  async waitForPostLoginDestination(timeout = 25000) {
+    await this.dismissNoInternetAlertIfPresent();
+    let dest = null;
+    await browser.waitUntil(
+      async () => {
+        if (await ui.firstByTestId(TEST_IDS.home.requestTreatment)) {
+          dest = 'home';
+          return true;
+        }
+        if (await ui.firstByTestId(TEST_IDS.profile.firstName)) {
+          dest = 'createProfile';
+          return true;
+        }
+        if (await ui.firstByTestId(TEST_IDS.otp.input)) {
+          dest = 'otp';
+          return true;
+        }
+        if (await this.#isHomeVisible()) {
+          dest = 'home';
+          return true;
+        }
+        if (await this.#isOtpScreenVisible()) {
+          dest = 'otp';
+          return true;
+        }
+        return false;
+      },
+      {
+        timeout,
+        interval: 300,
+        timeoutMsg:
+          'After Sign In expected Home, Create Profile, or Enter OTP (see Login.js otp_status / is_profile_completed)',
+      },
+    );
+    ui.log('Login', `Post-login screen: ${dest}`);
+    return dest;
   }
 
   async enterPassword(password) {

@@ -15,6 +15,10 @@ const TEST_IDS = {
     forgotPassword: 'login.forgotPassword',
     submit: 'login.submit',
     tncCheckbox: 'login.tncCheckbox',
+    countryCode: 'login.countryCode',
+    countrySave: 'login.countrySave',
+    countryOption: code =>
+      `login.country.${String(code).replace(/^\+/, '')}`,
   },
   home: {
     tile: index => `home.tile.${index}`,
@@ -75,9 +79,48 @@ const TEST_IDS = {
   summary: {
     submitNow: 'summary.submitNow',
   },
-  /** react-native-keyboard-controller KeyboardToolbar.Done */
+  /** react-native-keyboard-controller KeyboardToolbar (Done / Next). */
   keyboard: {
     done: 'keyboard.toolbar.done',
+    next: 'keyboard.toolbar.next',
+  },
+  otp: {
+    input: 'otp.input',
+    verify: 'otp.verify',
+  },
+  signupSuccess: {
+    ok: 'signupSuccess.ok',
+  },
+  placePicker: {
+    search: 'placePicker.search',
+    result: index => `placePicker.result.${index}`,
+  },
+  profile: {
+    firstName: 'profile.firstName',
+    lastName: 'profile.lastName',
+    address: 'profile.address',
+    addressMap: 'profile.addressMap',
+    county: 'profile.county',
+    country: 'profile.country',
+    countrySave: 'profile.countrySave',
+    countryOption: name =>
+      `profile.country.${String(name).replace(/^\+/, '').replace(/\s+/g, '_')}`,
+    postcode: 'profile.postcode',
+    mobile: 'profile.mobile',
+    company: 'profile.company',
+    animal: key => `profile.animal.${key}`,
+    herdNo: 'profile.herdNo',
+    organic: 'profile.organic',
+    organicYes: 'profile.organic.yes',
+    organicNo: 'profile.organic.no',
+    petEdit: 'profile.pet.edit',
+    petDelete: 'profile.pet.delete',
+    petHistory: 'profile.pet.history',
+    addCompanion: 'profile.addCompanion',
+    submit: 'profile.submit',
+  },
+  subscribe: {
+    skip: 'subscribe.skip',
   },
 };
 

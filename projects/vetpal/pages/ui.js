@@ -199,6 +199,108 @@ class Ui {
   }
 
   /**
+   * Type into a field by `testID`. Always tap first on iOS so `setValue`
+   * does not append into the previously focused field (e.g. eircode + company).
+   * @param {string} id
+   * @param {string} value
+   */
+  async typeByTestId(id, value) {
+    const el = await this.firstByTestId(id);
+    if (!el) {
+      throw new Error(
+        `testID "${id}" not found — rebuild/reinstall the Vet Pal app`,
+      );
+    }
+    await el.click();
+    await browser.pause(80);
+    try {
+      await el.clearValue();
+    } catch {
+      // some RN fields reject clearValue
+    }
+    const wanted = String(value);
+    try {
+      await el.setValue(wanted);
+    } catch {
+      await browser.execute('mobile: type', { text: wanted });
+    }
+  }
+
+  /**
+   * Swipe / XCUITest scroll until a testID is tappable.
+   * Dismisses the keyboard first — an open keypad covers Animal Category.
+   * @param {string} id
+   * @param {number} [maxSwipes=6]
+   */
+  async scrollToTestId(id, maxSwipes = 6) {
+    await this.dismissKeyboard().catch(() => {});
+
+    const visible = async () => {
+      const el = await this.firstByTestId(id);
+      if (!el) {
+        return null;
+      }
+      const shown = await el.isDisplayed().catch(() => true);
+      return shown ? el : null;
+    };
+
+    let el = await visible();
+    if (el) {
+      return el;
+    }
+
+    try {
+      this.log('UI', `mobile: scroll to ${id}`);
+      await browser.execute('mobile: scroll', {
+        direction: 'down',
+        name: id,
+      });
+    } catch {
+      // KeyboardAwareScrollView may not accept this; swipe next
+    }
+
+    el = await visible();
+    if (el) {
+      return el;
+    }
+
+    for (let i = 0; i < maxSwipes; i += 1) {
+      await this.swipeUp();
+      el = await visible();
+      if (el) {
+        return el;
+      }
+    }
+
+    // Off-screen but in the tree — tap anyway (XCUITest often scrolls on click)
+    el = await this.firstByTestId(id);
+    if (el) {
+      return el;
+    }
+
+    throw new Error(
+      `testID "${id}" not on screen after ${maxSwipes} swipes — rebuild/reinstall the Vet Pal app`,
+    );
+  }
+
+  /**
+   * Current value of a text field, or empty string.
+   * @param {string} id
+   * @returns {Promise<string>}
+   */
+  async valueByTestId(id) {
+    const el = await this.firstByTestId(id);
+    if (!el) {
+      return '';
+    }
+    const value =
+      (await el.getText().catch(() => '')) ||
+      (await el.getAttribute('value').catch(() => '')) ||
+      '';
+    return String(value).trim();
+  }
+
+  /**
    * Open a sheet by field ID, tap a row, tap Save, wait for the sheet to leave.
    * One Appium find per step. Returns false if any ID is missing.
    * @param {{ openId?: string, rowId: string, saveId: string }} ids
@@ -589,11 +691,10 @@ class Ui {
   }
 
   /**
-   * Dismiss the iOS keyboard after Treatment Request (multiline).
-   * Never call `mobile: hideKeyboard` (WDA retries ~12s). Never press Return
-   * — this field is multiline, so Return inserts a newline and the keyboard stays.
-   * Tap KeyboardToolbar Done; if it is not in the tree, tap just above the
-   * keyboard element on the Done side (the accessory bar, not the screen size).
+   * Dismiss the iOS keyboard by tapping KeyboardToolbar.Done.
+   * Prefer testID `keyboard.toolbar.done`. If XCUITest hides the ID, click
+   * the Done button control (not screen x/y).
+   * Never call `mobile: hideKeyboard` (WDA retries ~12s).
    */
   async dismissKeyboard() {
     if (this.isAndroid()) {
@@ -605,82 +706,50 @@ class Ui {
       return;
     }
 
-    try {
-      if (!(await browser.isKeyboardShown())) {
-        return;
-      }
-    } catch {
-      // continue
-    }
-
-    if (await this.tapTestId(TEST_IDS.keyboard.done)) {
-      await browser.pause(150);
-      return;
-    }
-
-    const doneLabel = await this.#firstDoneLabel();
-    if (doneLabel) {
-      this.log('UI', 'Tap keyboard Done label');
-      await doneLabel.click().catch(() => this.press(doneLabel));
-      await browser.pause(150);
-      return;
-    }
-
-    await this.#tapDoneAboveKeyboard();
+    await this.tapKeyboardDone();
   }
 
   /**
-   * KeyboardToolbar "Done" text when the testID is not in the snapshot.
-   * @returns {Promise<WebdriverIO.Element|null>}
+   * Tap KeyboardToolbar.Done. Do not use keyboard rect / screen coordinates.
+   * includeNonModalElements lets XCUITest see the accessory toolbar.
+   * @returns {Promise<boolean>}
    */
-  async #firstDoneLabel() {
+  async tapKeyboardDone() {
+    try {
+      await browser.updateSettings({ includeNonModalElements: true });
+    } catch {
+      // older WDA
+    }
+
+    const id = TEST_IDS.keyboard.done;
+    if (await this.tapTestId(id)) {
+      await browser.pause(200);
+      return true;
+    }
+
     const selectors = [
-      `-ios predicate string:name == "${TEST_IDS.keyboard.done}" OR label == "${TEST_IDS.keyboard.done}"`,
-      '-ios predicate string:label == "Done" OR name == "Done"',
-      '-ios class chain:**/XCUIElementTypeStaticText[`label == "Done"`]',
+      this.testIdSelector(id),
+      '-ios class chain:**/XCUIElementTypeKeyboard/**/XCUIElementTypeButton[`label == "Done"`]',
+      '-ios class chain:**/XCUIElementTypeToolbar/**/XCUIElementTypeButton[`label == "Done"`]',
+      '-ios class chain:**/XCUIElementTypeButton[`label == "Done"`]',
+      '-ios predicate string:type == "XCUIElementTypeButton" AND (label == "Done" OR name == "Done" OR value == "Done")',
+      '-ios predicate string:label == "Done" OR name == "Done" OR value == "Done"',
     ];
     for (const sel of selectors) {
       try {
         const els = await $$(sel);
         if (els[0]) {
-          return els[0];
+          this.log('UI', 'Tap keyboard Done control');
+          await els[0].click();
+          await browser.pause(200);
+          return true;
         }
       } catch {
         // next selector
       }
     }
-    return null;
-  }
-
-  /**
-   * Accessory bar sits on top of XCUIElementTypeKeyboard. Done is the right
-   * control on that bar (KeyboardToolbar.Done). Uses the keyboard element's
-   * own rect — not getWindowSize.
-   */
-  async #tapDoneAboveKeyboard() {
-    let keyboard = null;
-    try {
-      const els = await $$(
-        '-ios class chain:**/XCUIElementTypeKeyboard',
-      );
-      keyboard = els[0] || null;
-    } catch {
-      keyboard = null;
-    }
-    if (!keyboard) {
-      return;
-    }
-    try {
-      const loc = await keyboard.getLocation();
-      const size = await keyboard.getSize();
-      const x = loc.x + size.width - 36;
-      const y = loc.y - 22;
-      this.log('UI', `Tap Done above keyboard at ${Math.round(x)},${Math.round(y)}`);
-      await this.pressAt(x, y);
-      await browser.pause(150);
-    } catch {
-      // ignore
-    }
+    this.log('UI', `testID ${id} / Done button not in tree`);
+    return false;
   }
 
   async scrollToText(text) {
@@ -733,12 +802,13 @@ class Ui {
   }
 
   async isTextVisible(text) {
-    const exact = await this.byExactText(text);
-    if (await this.isShown(exact)) {
+    if (await this.firstCaption(text)) {
       return true;
     }
-    const partial = await this.byContainsText(text);
-    return this.isShown(partial);
+    if (await this.firstCaptionContains(text)) {
+      return true;
+    }
+    return false;
   }
 
   /**

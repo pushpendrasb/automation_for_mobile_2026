@@ -1,0 +1,106 @@
+/**
+ * Sign Up catalog — Login.js Sign Up tab.
+ */
+/** @type {Array<Record<string, string | string[]>>} */
+const SIGN_UP_TEST_CASES = [
+  {
+    caseId: 'VP-SU-P01',
+    module: 'Sign Up',
+    type: 'positive',
+    title: 'Sign Up form is ready',
+    understanding:
+      'Sign Up tab must show Email, country code, Mobile, Password, Confirm Password, T&C, Sign Up Now.',
+    steps: [
+      'Open app',
+      'Tap Sign Up',
+      'Check all Sign Up fields',
+    ],
+    expected: 'Sign Up form ready',
+    passWhen: 'Email, mobile, passwords, T&C, Sign Up Now visible',
+    failWhen: 'Still on Sign In or fields missing',
+  },
+  {
+    caseId: 'VP-SU-P02',
+    module: 'Sign Up',
+    type: 'positive',
+    title: 'Valid Sign Up opens OTP',
+    understanding:
+      'Values from data/signUpData.js (email, +91, mobile, matching passwords, T&C) must call register and open Enter OTP.',
+    steps: [
+      'Enter email, +91, mobile, password, confirm',
+      'Tick I agree with Terms & Conditions',
+      'Tap Sign Up Now',
+    ],
+    expected: 'OtpVerifyScreen (Enter OTP)',
+    passWhen: 'Enter OTP visible',
+    failWhen: 'Toast/alert, still on Sign Up (duplicate email/mobile — edit signUpData.js)',
+  },
+  {
+    caseId: 'VP-SU-N01',
+    module: 'Sign Up',
+    type: 'negative',
+    title: 'Empty form → email toast',
+    understanding: 'signUpHandler checks email first.',
+    steps: ['Leave all empty', 'Tap Sign Up Now'],
+    expected: 'Toast: Please enter email',
+    passWhen: 'Email blank toast; stay on Sign Up',
+    failWhen: 'OTP or Home',
+  },
+  {
+    caseId: 'VP-SU-N02',
+    module: 'Sign Up',
+    type: 'negative',
+    title: 'Empty India mobile → 10-digit toast',
+    understanding: '+91 requires 10 digits (phoneNumberUtils).',
+    steps: ['Enter email', 'Select +91', 'Leave mobile empty', 'Tap Sign Up Now'],
+    expected: 'Toast: India number should be 10 digits.',
+    passWhen: 'Length toast; stay on Sign Up',
+    failWhen: 'API called',
+  },
+  {
+    caseId: 'VP-SU-N03',
+    module: 'Sign Up',
+    type: 'negative',
+    title: 'Empty password → password toast',
+    understanding: 'Email + valid India mobile, password empty.',
+    steps: ['Fill email and mobile', 'Leave password empty', 'Tap Sign Up Now'],
+    expected: 'Toast: Please enter password',
+    passWhen: 'Password blank toast',
+    failWhen: 'OTP opened',
+  },
+  {
+    caseId: 'VP-SU-N04',
+    module: 'Sign Up',
+    type: 'negative',
+    title: 'Empty confirm password',
+    understanding: 'Confirm checked after password.',
+    steps: ['Fill email, mobile, password', 'Leave confirm empty', 'Tap Sign Up Now'],
+    expected: 'Toast: Please enter confirm password',
+    passWhen: 'Confirm blank toast',
+    failWhen: 'OTP opened',
+  },
+  {
+    caseId: 'VP-SU-N05',
+    module: 'Sign Up',
+    type: 'negative',
+    title: 'Password mismatch',
+    understanding: 'password != confirmPassword.',
+    steps: ['Fill all', 'Different confirm', 'Tick T&C', 'Tap Sign Up Now'],
+    expected: 'Toast: Password and confirm do not match',
+    passWhen: 'Mismatch toast',
+    failWhen: 'OTP opened',
+  },
+  {
+    caseId: 'VP-SU-N06',
+    module: 'Sign Up',
+    type: 'negative',
+    title: 'T&C not ticked',
+    understanding: 'isTncChecked must be true before API.',
+    steps: ['Fill valid fields', 'Do not tick T&C', 'Tap Sign Up Now'],
+    expected: 'Toast: Please accept terms and conditions',
+    passWhen: 'T&C toast',
+    failWhen: 'OTP opened',
+  },
+];
+
+module.exports = { SIGN_UP_TEST_CASES };
