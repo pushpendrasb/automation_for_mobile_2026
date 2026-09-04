@@ -27,7 +27,7 @@ class HomePage {
           );
         }
         const els = await $$(
-          `-ios predicate string:name == "${TEST_IDS.home.requestTreatment}" OR label == "${TEST_IDS.home.requestTreatment}" OR name == "${TEST_IDS.login.mobile}" OR label == "${TEST_IDS.login.mobile}" OR label == "VETPAL"`,
+          `-ios predicate string:name == "${TEST_IDS.home.requestTreatment}" OR label == "${TEST_IDS.home.requestTreatment}" OR name == "${TEST_IDS.login.mobile}" OR label == "${TEST_IDS.login.mobile}"`,
         );
         return els.length > 0;
       },

@@ -206,20 +206,29 @@ class VetPracticeFormPage {
     } catch {
       await ui.typeInto(field, text);
     }
-    await ui.dismissKeyboard();
+    await ui.dismissKeyboardUntilGone();
   }
 
+  /**
+   * Footer Submit is behind the number pad if NO. OF ANIMALS still has focus.
+   * Tap KeyboardToolbar Done until the keypad is gone, then tap `rt.submit`.
+   */
   async clickSubmitRequest() {
     ui.log('Request Treatment', 'Submit Request (rt.submit)');
-    await ui.dismissKeyboard();
-    try {
-      await browser.waitUntil(
-        async () => !(await browser.isKeyboardShown()),
-        { timeout: 2500, interval: 120 },
-      );
-    } catch {
-      await ui.dismissKeyboard();
+    if (await ui.isKeyboardVisible()) {
+      await ui.dismissNumberPad();
+    } else {
+      await ui.tapKeyboardDone();
     }
+    await browser.waitUntil(
+      async () => !(await ui.isKeyboardVisible()),
+      {
+        timeout: 8000,
+        interval: 150,
+        timeoutMsg:
+          'Keyboard still covering Submit Request — tap Done after NO. OF ANIMALS',
+      },
+    );
     await ui.requireTapTestId(TEST_IDS.requestTreatment.submit);
   }
 

@@ -10,7 +10,8 @@
  *   Poultry tags: Tag/ID + Age + Age unit
  *   Group (all): Group name + No. of animals (min 5)
  *   Poultry group extra: Average age + Age unit
- * - Defaults: Pig & Poultry open in Group; Horse/Cattle/Sheep/Goat/Deer open in Tag/ID
+ * - Defaults (`defaultsToGroupIdentification`): Pig, Poultry, and Horse/equine
+ *   open in Group; Cattle/Sheep/Goat/Deer open in Microchip/ID (tags)
  *
  * Picker labels are API-built (`Horses - Horses`, `Cattle - Dairy`, …).
  * Tests match the category token, not a hard-coded subtype.
@@ -31,19 +32,22 @@ const animalCategories = [
     pickerContains: 'Horses',
     pickerRowIndex: 0,
     layout: 'horse',
-    defaultMode: 'tags',
+    defaultMode: 'group',
     identification: {
-      mode: 'tags',
-      names: ['HORSE-AUTO-001', 'HORSE-AUTO-002', 'HORSE-AUTO-003'],
-      tags: ['H001', 'H002', 'H003'],
+      mode: 'group',
+      groupName: 'HORSE-AUTO-GROUP',
+      numberOfAnimals: String(MIN_GROUP_ANIMALS),
     },
     fields: {
       screen: 'New Request → Animal Details (inline AnimalIdentificationExpandable)',
-      tagFields: ['Name 1–4 (required)', 'Tag/ID 1–4 (optional, no special chars)'],
+      tagFields: [
+        'Name 1–4 (required if Microchip/ID)',
+        'Microchip/ID 1–4 (optional, no special chars)',
+      ],
       groupFields: ['GROUP NAME', 'NO. OF ANIMALS (min 5)'],
-      defaultMode: 'Tag/ID',
-      multiple: '4 tag slots always visible; Group has Add More',
-      requiredTag: 'Animal name required; tag optional',
+      defaultMode: 'Group',
+      multiple: 'Group has Add More; Microchip/ID has 4 name/tag slots',
+      requiredTag: 'Group name + count ≥ 5',
     },
   },
   {
@@ -193,6 +197,7 @@ const requestTreatmentData = {
     completeIdentification:
       'Please complete animal identification before submitting your request',
     enterTreatment: 'Please enter history or symptoms of animal',
+    requestSent: 'Your request for advice has been sent',
   },
   labels: {
     requestTreatment: 'Request Treatment',

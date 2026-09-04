@@ -568,6 +568,16 @@ class LoginPage {
   }
 
   async tapSignIn() {
+    await this.#dismissKeyboardFast();
+    await browser.waitUntil(
+      async () => Boolean(await ui.firstByTestId(TEST_IDS.login.submit)),
+      {
+        timeout: 10000,
+        interval: 200,
+        timeoutMsg:
+          'login.submit not on screen after password — dismiss the keypad, or rebuild/reinstall the Vet Pal app',
+      },
+    );
     await ui.requireTapTestId(TEST_IDS.login.submit);
   }
 

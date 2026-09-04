@@ -154,13 +154,20 @@ class Ui {
   /**
    * First match for a `testID`. Does not require `isDisplayed` — RN modals
    * often report Save/rows as not displayed while they are tappable.
+   *
+   * Do not use `els[0] || null` alone: WebdriverIO's ElementArray `[0]` on an
+   * empty result is a lazy `$(selector)` proxy. Clicking it waits then throws
+   * "element wasn't found" instead of returning null.
    * @param {string} id
    * @returns {Promise<WebdriverIO.Element|null>}
    */
   async firstByTestId(id) {
     try {
       const els = await $$(this.testIdSelector(id));
-      return els[0] || null;
+      if (!els || els.length < 1) {
+        return null;
+      }
+      return els[0];
     } catch {
       return null;
     }
@@ -178,8 +185,13 @@ class Ui {
       return false;
     }
     this.log('UI', `Tap testID ${id}`);
-    await el.click();
-    return true;
+    try {
+      await el.click();
+      return true;
+    } catch (err) {
+      this.log('UI', `Tap testID ${id} missed: ${err.message}`);
+      return false;
+    }
   }
 
   /**
@@ -687,10 +699,9 @@ class Ui {
   }
 
   /**
-   * Dismiss the iOS keyboard by tapping KeyboardToolbar.Done.
-   * Prefer testID `keyboard.toolbar.done`. If XCUITest hides the ID, click
-   * the Done button control (not screen x/y).
-   * Never call `mobile: hideKeyboard` (WDA retries ~12s).
+   * Dismiss the iOS keyboard. Done is often missing from the XCUITest tree
+   * (KeyboardToolbar). Fall through to a non-input blur target, then the
+   * accessory bar of the found Keyboard element.
    */
   async dismissKeyboard() {
     if (this.isAndroid()) {
@@ -702,13 +713,11 @@ class Ui {
       return;
     }
 
-    await this.tapKeyboardDone();
+    await this.dismissKeyboardUntilGone(3);
   }
 
   /**
-   * True when the iOS keypad or KeyboardToolbar accessory is showing.
-   * Do not rely only on XCUIElementTypeKeyboard — the accessory bar can
-   * stay up while the keypad is not in the snapshot.
+   * True when the iOS keypad is showing.
    * @returns {Promise<boolean>}
    */
   async isKeyboardVisible() {
@@ -724,23 +733,32 @@ class Ui {
     }
     try {
       const els = await $$('-ios class chain:**/XCUIElementTypeKeyboard');
-      if (els.length > 0) {
-        return true;
-      }
+      return els.length > 0;
     } catch {
-      // ignore
+      return false;
     }
-    if (await this.firstByTestId(TEST_IDS.keyboard.done)) {
-      return true;
-    }
-    return false;
   }
 
   /**
-   * Hide the keyboard so T&C / Sign Up Now are tappable.
-   * Prefer login.dismissKeyboard (hint above the keypad) because
-   * KeyboardToolbar.Done is often missing from the XCUITest tree.
-   * Never tap screen x/y or call mobile: hideKeyboard.
+   * Number-pad (NO. OF ANIMALS) has no Return and no Done in the snapshot.
+   * Blur the field, then tap the accessory bar above XCUIElementTypeKeyboard.
+   */
+  async dismissNumberPad() {
+    if (!(await this.isKeyboardVisible())) {
+      await this.waitTrue(() => this.isKeyboardVisible(), 800, 80);
+    }
+    if (!(await this.isKeyboardVisible())) {
+      return;
+    }
+    await this.dismissKeyboardUntilGone(4);
+  }
+
+  /**
+   * Hide the keypad. Order:
+   * 1. login / animalId dismiss hints (Keyboard.dismiss in the app)
+   * 2. rt.header (New Request title — not an input)
+   * 3. GROUP NAME / Animal Details caption
+   * 4. accessory Done using the Keyboard element's rect (Done is not in the tree)
    * @param {number} [maxTries=4]
    */
   async dismissKeyboardUntilGone(maxTries = 4) {
@@ -749,26 +767,93 @@ class Ui {
       return;
     }
 
-    if (await this.tapTestId(TEST_IDS.login.dismissKeyboard)) {
-      await browser.pause(250);
-    }
-
-    await this.tapKeyboardDone();
-
     for (let i = 0; i < maxTries; i += 1) {
       if (!(await this.isKeyboardVisible())) {
         return;
       }
-      this.log('UI', 'Keyboard still visible — tap hint / Done again');
-      await this.tapTestId(TEST_IDS.login.dismissKeyboard);
-      await this.tapKeyboardDone();
+      this.log('UI', `Dismiss keyboard try ${i + 1}/${maxTries}`);
+      await this.tapKeyboardAccessoryDone();
       await browser.pause(250);
+      if (!(await this.isKeyboardVisible())) {
+        return;
+      }
+      if (await this.#tapKeyboardBlurTarget()) {
+        await browser.pause(250);
+      }
     }
   }
 
   /**
-   * Tap KeyboardToolbar.Done. Do not use keyboard rect / screen coordinates.
-   * includeNonModalElements lets XCUITest see the accessory toolbar.
+   * Tap a non-input control so the number field blurs.
+   * Do not tap rt.animalCategory.field (opens CatPopup) or rt.back.
+   * @returns {Promise<boolean>}
+   */
+  async #tapKeyboardBlurTarget() {
+    const ids = [
+      TEST_IDS.animalId.dismissKeyboard,
+      TEST_IDS.login.dismissKeyboard,
+      TEST_IDS.requestTreatment.header,
+    ];
+    for (const id of ids) {
+      if (await this.tapTestId(id)) {
+        return true;
+      }
+    }
+    const captions = [
+      'GROUP NAME',
+      'Animal Details',
+      'Animal Identification',
+    ];
+    for (const label of captions) {
+      const el = await this.firstCaption(label);
+      if (el) {
+        this.log('UI', `Tap blur caption "${label}"`);
+        await el.click().catch(() => this.press(el));
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /**
+   * KeyboardToolbar Done is not in the XCUITest tree. Tap the top-right of
+   * the found Keyboard element (accessory sits on that edge), not a
+   * getWindowSize fraction.
+   * @returns {Promise<boolean>}
+   */
+  async tapKeyboardAccessoryDone() {
+    let kb;
+    try {
+      const els = await $$('-ios class chain:**/XCUIElementTypeKeyboard');
+      kb = els[0];
+    } catch {
+      kb = null;
+    }
+    if (!kb) {
+      this.log('UI', 'No XCUIElementTypeKeyboard for accessory Done');
+      return false;
+    }
+    const loc = await kb.getLocation();
+    const size = await kb.getSize();
+    if (!(size.width > 0) || !(size.height > 40) || size.height > 450) {
+      this.log(
+        'UI',
+        `Skip accessory tap — keyboard frame ${Math.round(size.width)}x${Math.round(size.height)}`,
+      );
+      return false;
+    }
+    const x = Math.round(loc.x + size.width - 48);
+    const yAbove = Math.round(loc.y - 24);
+    this.log(
+      'UI',
+      `Tap accessory Done above keyboard ${Math.round(size.width)}x${Math.round(size.height)} @ ${x},${yAbove}`,
+    );
+    await this.pressAt(x, yAbove);
+    return true;
+  }
+
+  /**
+   * Tap KeyboardToolbar.Done when XCUITest actually exposes it (rare here).
    * @returns {Promise<boolean>}
    */
   async tapKeyboardDone() {
@@ -785,14 +870,8 @@ class Ui {
     }
 
     const selectors = [
-      this.testIdSelector(id),
-      '-ios class chain:**/XCUIElementTypeKeyboard/**/XCUIElementTypeButton[`label == "Done"`]',
-      '-ios class chain:**/XCUIElementTypeToolbar/**/XCUIElementTypeButton[`label == "Done"`]',
       '-ios class chain:**/XCUIElementTypeButton[`label == "Done"`]',
-      '-ios class chain:**/XCUIElementTypeStaticText[`label == "Done"`]',
-      '-ios predicate string:type == "XCUIElementTypeButton" AND (label == "Done" OR name == "Done" OR value == "Done")',
-      '-ios predicate string:type == "XCUIElementTypeOther" AND (label == "Done" OR name == "Done")',
-      '-ios predicate string:label == "Done" OR name == "Done" OR value == "Done"',
+      '-ios predicate string:label == "Done" OR name == "Done"',
     ];
     for (const sel of selectors) {
       try {
@@ -807,7 +886,6 @@ class Ui {
         // next selector
       }
     }
-    this.log('UI', `testID ${id} / Done button not in tree`);
     return false;
   }
 

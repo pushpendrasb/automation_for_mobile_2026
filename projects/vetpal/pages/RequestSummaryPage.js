@@ -34,25 +34,43 @@ class RequestSummaryPage {
     await ui.requireTapTestId(TEST_IDS.summary.submitNow);
   }
 
+  /**
+   * After Submit Request Now, PrescriptionSummary.js shows
+   * "Your request for advice has been sent" then `navigation.pop(2)` on toast
+   * hide — that lands on Pending Prescriptions. Do not require the word
+   * "success"; wait for the list (`pending.requestAdvice`), not a 1.5s snapshot.
+   */
   async verifyRequestSuccess() {
-    await browser.pause(1500);
-    const markers = [
-      'success',
-      'submitted',
-      'Pending Prescriptions',
-      'Request Vet Advice/Treatment',
-      requestTreatmentData.labels.requestTreatment,
-    ];
-    for (const m of markers) {
-      if (await ui.isTextVisible(m)) {
-        ui.log('Request Treatment', `Success indicator: ${m}`);
-        await ui.screenshot('after-successful-submission');
-        return m;
-      }
-    }
-    throw new Error(
-      'No success/confirmation screen after Submit Request Now (check API / toast)',
+    const toast = requestTreatmentData.toasts.requestSent;
+    let sawToast = false;
+    await browser.waitUntil(
+      async () => {
+        if (
+          !sawToast &&
+          (await ui.anyTextVisible([toast, 'advice has been sent']))
+        ) {
+          sawToast = true;
+          ui.log('Request Treatment', `Toast: ${toast}`);
+        }
+        if (await ui.firstByTestId(TEST_IDS.pending.requestAdvice)) {
+          return true;
+        }
+        return ui.anyDisplayed(ui.pendingPrescriptionsSelector());
+      },
+      {
+        timeout: 20000,
+        interval: 350,
+        timeoutMsg:
+          'Pending Prescriptions list not shown after Submit Request Now',
+      },
     );
+    ui.log(
+      'Request Treatment',
+      sawToast
+        ? 'Toast then Pending Prescriptions list'
+        : 'Pending Prescriptions list',
+    );
+    await ui.screenshot('after-successful-submission');
   }
 }
 

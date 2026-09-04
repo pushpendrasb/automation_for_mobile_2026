@@ -23,17 +23,19 @@ Inspected `vetpal-animal-owner` first. No `testID`s on this flow (only SideMenu 
 
 From `resolveCategory`, `defaultsToGroupIdentification`, `TAG_SLOT_COUNT = 4`, `MIN_GROUP_ANIMAL_COUNT = 5`.
 
-| Category | Default mode | Tag/ID fields | Group fields | Multiple | Required |
-|----------|--------------|---------------|--------------|----------|----------|
-| Horse | Tag/ID | **Name 1–4** + **Tag/ID 1–4** | GROUP NAME, NO. OF ANIMALS (min 5) | 4 slots; Group **Add More** | Name required; tag optional (no special chars) |
-| Cattle | Tag/ID | Tag/ID 1–4 | GROUP NAME, NO. OF ANIMALS | 4 slots / Add More | Tag required |
-| Sheep | Tag/ID | Tag/ID 1–4 | same | same | Tag required |
-| Goat | Tag/ID | Tag/ID 1–4 | same | same | Tag required |
-| Deer | Tag/ID | Tag/ID 1–4 | same | same | Tag required |
-| Pig | **Group** | Tag/ID 1–4 if switched | GROUP NAME, NO. OF ANIMALS (min 5) | Add More | Group name + count ≥ 5 |
-| Poultry | **Group** | Tag/ID + Age + Age unit | GROUP NAME, NO. OF ANIMALS, **AVERAGE AGE**, **AGE UNIT** | Add More | Group: name, count ≥ 5, age > 0, unit |
+Horse, Pig, and Poultry open in **Group**. Cattle / Sheep / Goat / Deer open in **Microchip/ID**.
 
-Positive data uses Tag/ID for Horse–Deer (3 entries) and Group for Pig/Poultry.
+| Category | Default mode | Microchip/ID fields | Group fields | Multiple | Required |
+|----------|--------------|---------------------|--------------|----------|----------|
+| Horse | **Group** | Name 1–4 + Microchip/ID 1–4 if switched | GROUP NAME, NO. OF ANIMALS (min 5) | Group **Add More**; 4 tag slots | Group name + count ≥ 5 |
+| Cattle | Microchip/ID | Microchip/ID 1–4 | GROUP NAME, NO. OF ANIMALS | 4 slots / Add More | Tag required |
+| Sheep | Microchip/ID | Microchip/ID 1–4 | same | same | Tag required |
+| Goat | Microchip/ID | Microchip/ID 1–4 | same | same | Tag required |
+| Deer | Microchip/ID | Microchip/ID 1–4 | same | same | Tag required |
+| Pig | **Group** | Microchip/ID 1–4 if switched | GROUP NAME, NO. OF ANIMALS (min 5) | Add More | Group name + count ≥ 5 |
+| Poultry | **Group** | Microchip/ID + Age + Age unit | GROUP NAME, NO. OF ANIMALS, **AVERAGE AGE**, **AGE UNIT** | Add More | Group: name, count ≥ 5, age > 0, unit |
+
+Positive data uses Group for Horse / Pig / Poultry and Microchip/ID (tags) for Cattle–Deer (3 entries).
 
 ## Implemented
 
@@ -50,7 +52,7 @@ Kept the existing project (`projects/vetpal/`), not a new `automation/` tree.
 - Subscribed **Dev Test Account-U** / **Dev Test Account - U** and **Southwood Pharmacy** must exist on the test account
 - Vet Practice: `NewPrescription.js` auto-fills when there is one subscribed vet. If the field is not exact **Select**, the script skips `SelectVetPopup`.
 - **Next / Submit Request** are a fixed footer (`footerWrap` absolute). Do not swipe the ScrollView looking for them — tap the footer.
-- Horse identification: Name 1–4 and Tag/ID 1–4 are already on step 2 (Tag/ID mode is the default). Type into those TextInput placeholders. Do not `scrollToText("Name 1")` — that placeholder is not StaticText, so swipeUp hides the cards and `isDisplayed` stays false.
+- Horse identification: **Group** is the default. Fill `animalId.group.groupName.0` and `animalId.group.number.0` (min 5). After NO. OF ANIMALS, dismiss the number pad: KeyboardToolbar **Done** is not in the XCUITest tree, so the script taps the accessory bar of `XCUIElementTypeKeyboard` and the **New Request** header (`rt.header`). Rebuild the app to also get `animalId.dismissKeyboard` on the GROUP NAME label (`Keyboard.dismiss()`, same pattern as login).
 - Remedy store (Vet Practice path): tap **Select Dispense Store** → type **`REMEDY_STORE_NAME`** in Search → tap card at **`REMEDY_STORE_INDEX`** (0 = first match) → **Save**. Card text is not in the iOS tree; search filters the list so index 0 is the named store.
 - Branch: **one** branch auto-fills after tapping the field (no sheet). **Several** branches → field stays **Select Branch** → tap the gray row under the **Branch** title → CatPopup row at **`BRANCH_INDEX`** (default 0) → **Save**. Do not skip when the placeholder is missing from the iOS tree. Override with `--branch=1` or `BRANCH_INDEX` in `.env`.
 - Vet Practice: **one** subscribed vet auto-fills the field — skip the popup. **Several** vets → field stays **Select** → tap field → `SelectVetPopup` row at **`VET_PRACTICE_INDEX`** → **Save** (same pattern as the store modal). This popup has no search box.

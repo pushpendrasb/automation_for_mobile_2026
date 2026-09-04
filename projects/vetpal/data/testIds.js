@@ -77,6 +77,11 @@ const TEST_IDS = {
   animalId: {
     field: (mode, key, index = 0) => `animalId.${mode}.${key}.${index}`,
     ageUnit: (target, index = 0) => `animalId.ageUnit.${target}.${index}`,
+    /**
+     * GROUP NAME label — `Keyboard.dismiss()` (same pattern as login.dismissKeyboard).
+     * KeyboardToolbar.Done is not in the XCUITest tree on this screen.
+     */
+    dismissKeyboard: 'animalId.dismissKeyboard',
   },
   summary: {
     submitNow: 'summary.submitNow',
