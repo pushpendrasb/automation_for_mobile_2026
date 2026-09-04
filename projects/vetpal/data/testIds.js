@@ -36,6 +36,8 @@ const TEST_IDS = {
   },
   pending: {
     requestAdvice: 'pending.requestAdvice',
+    /** Pending Prescriptions header back (`MyPrescriptions.js`). */
+    back: 'pending.back',
   },
   provider: {
     close: 'provider.close',
@@ -57,6 +59,8 @@ const TEST_IDS = {
     addPhoto: 'rt.addPhoto',
     nearbySearch: 'rt.nearby.search',
     nearbyStoreCard: index => `rt.nearby.store.${index}`,
+    /** Nearby selected card — Branch line (`NewPrescriptionForRemedyStore.js`). */
+    nearbyBranch: 'rt.nearby.branch',
   },
   vetPracticePopup: {
     title: 'vetPopup.title',
@@ -82,6 +86,9 @@ const TEST_IDS = {
      * KeyboardToolbar.Done is not in the XCUITest tree on this screen.
      */
     dismissKeyboard: 'animalId.dismissKeyboard',
+    /** Segment: Microchip/ID vs Group (`AnimalIdentificationExpandable.js`). */
+    modeTags: 'animalId.mode.tags',
+    modeGroup: 'animalId.mode.group',
   },
   summary: {
     submitNow: 'summary.submitNow',

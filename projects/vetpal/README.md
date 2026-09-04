@@ -82,12 +82,23 @@ npm run test:ios:rt:cattle -- --practice-name="Dev Test Account-U" --store-name=
 # override indexes (0 = first practice / store / branch):
 npm run test:ios:rt:cattle -- --practice=0 --store=1 --branch=0
 npm run test:ios:rt:cattle -- 2 1 0
+# Group vs Microchip/ID (all categories):
+npm run test:ios:rt:horse -- --mode=group
+npm run test:ios:rt:horse -- --mode=tags
+npm run test:ios:rt:cattle -- --mode=group --practice=1 --store=1 --branch=0
+# all categories, same mode:
+ANIMAL_ID_MODE=group npm run test:ios:rt:vet
+ANIMAL_ID_MODE=tags npm run test:ios:rt:vet
 
 npm run test:ios:rt:vet          # TC-VP-001…007
 npm run test:ios:rt:vet:neg      # provider / category / treatment validation
-npm run test:ios:rt:nearby       # TC-NRS-001…007 (Step 3 WebView)
+# Nearby Remedy Store (Choose a Provider → green card → Step 3 WebView)
+npm run test:ios:rt:nearby       # TC-NRS-001…007 all categories
 npm run test:ios:rt:nearby:neg
-npm run test:ios:rt:horse        # Horse (TC-VP-001); indexes from .env
+npm run test:ios:rt:horse -- --nearby
+npm run test:ios:rt:cattle -- --nearby --mode=tags --store=0 --branch=0
+npm run test:ios:rt:horse -- --nearby --mode=group --store-name="Southwood Pharmacy"
+npm run test:ios:rt:horse        # Horse Vet Practice (TC-VP-001); indexes from .env
 npm run test:ios:rt:cattle       # Cattle (TC-VP-002)
 npm run test:ios:rt:sheep        # Sheep (TC-VP-003)
 npm run test:ios:rt:goat         # Goat (TC-VP-004)

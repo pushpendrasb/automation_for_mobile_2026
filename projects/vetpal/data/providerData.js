@@ -90,6 +90,16 @@ const providerData = {
       process.env.TREATMENT_REQUEST || 'demo treatment request'
     ).trim();
   },
+
+  /**
+   * Group vs Microchip/ID. Empty → each category's defaultMode.
+   * CLI: `--mode=group` | `--mode=tags`. Env: `ANIMAL_ID_MODE`.
+   * @returns {'group'|'tags'|null}
+   */
+  get identificationMode() {
+    const { normalizeIdentificationMode } = require('./animalCategories');
+    return normalizeIdentificationMode(process.env.ANIMAL_ID_MODE);
+  },
 };
 
 module.exports = { providerData, nameVariants };

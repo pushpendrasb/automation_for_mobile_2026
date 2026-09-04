@@ -12,30 +12,40 @@ class HomePage {
   }
 
   /**
-   * One XCUITest query per poll. Never use CONTAINS "VETPAL" — that match
-   * walks the whole tree (~4s) and returns Application + 14 nodes.
+   * One XCUITest query per poll. Includes inner Request Treatment screens
+   * (`rt.back`, Nearby search, Pending CTA) so a leftover New Request session
+   * is treated as logged-in instead of waiting 45s for Home.
    * @param {number} [timeout=45000]
    */
   async waitForHomeOrLogin(timeout = 45000) {
     await LoginPage.dismissNoInternetAlertIfPresent();
+    const readyIds = [
+      TEST_IDS.home.requestTreatment,
+      TEST_IDS.login.mobile,
+      TEST_IDS.pending.requestAdvice,
+      TEST_IDS.requestTreatment.back,
+      TEST_IDS.requestTreatment.nearbySearch,
+      TEST_IDS.provider.nearby,
+    ];
     await browser.waitUntil(
       async () => {
         if (ui.isAndroid()) {
-          return (
-            (await ui.firstByTestId(TEST_IDS.home.requestTreatment)) ||
-            (await ui.firstByTestId(TEST_IDS.login.mobile))
-          );
+          for (const id of readyIds) {
+            if (await ui.firstByTestId(id)) {
+              return true;
+            }
+          }
+          return false;
         }
-        const els = await $$(
-          `-ios predicate string:name == "${TEST_IDS.home.requestTreatment}" OR label == "${TEST_IDS.home.requestTreatment}" OR name == "${TEST_IDS.login.mobile}" OR label == "${TEST_IDS.login.mobile}"`,
-        );
+        const parts = readyIds.map(id => `name == "${id}" OR label == "${id}"`);
+        const els = await $$(`-ios predicate string:${parts.join(' OR ')}`);
         return els.length > 0;
       },
       {
         timeout,
         interval: 500,
         timeoutMsg:
-          'Neither home.tile.0 nor login.mobile appeared. Rebuild/reinstall Vet Pal so tile testIDs are visible to XCUITest.',
+          'Neither Home, Sign In, nor Request Treatment appeared. Rebuild/reinstall Vet Pal so tile testIDs are visible to XCUITest.',
       },
     );
   }
@@ -47,6 +57,17 @@ class HomePage {
     await this.waitForHomeOrLogin();
     if (await this.isHomeVisible() || (await LoginPage.isHomeVisibleFast())) {
       ui.log('Home', 'Already on dashboard');
+      return;
+    }
+    if (await this.isPendingPrescriptionsVisible()) {
+      ui.log('Home', 'Already on Pending Prescriptions');
+      return;
+    }
+    if (
+      (await ui.firstByTestId(TEST_IDS.requestTreatment.back)) ||
+      (await ui.firstByTestId(TEST_IDS.requestTreatment.nearbySearch))
+    ) {
+      ui.log('Home', 'Already in Request Treatment — skip Sign In');
       return;
     }
     ui.log('Home', 'Signing in');
@@ -75,22 +96,40 @@ class HomePage {
       await this.ensureLoggedIn();
       return;
     }
+    if (await ui.firstByTestId(TEST_IDS.provider.close)) {
+      await ui.tapTestId(TEST_IDS.provider.close);
+      await browser.pause(200);
+    }
     ui.log('Home', 'Already logged in — return to Home without logout');
     await this.#returnToHomeWithoutLogout();
-    if (!(await this.isHomeVisible()) && !(await LoginPage.isHomeVisibleFast())) {
+    if (await this.isHomeVisible() || (await LoginPage.isHomeVisibleFast())) {
+      return;
+    }
+    if (await this.isPendingPrescriptionsVisible()) {
+      ui.log('Home', 'On Pending Prescriptions — skip extra Sign In');
+      return;
+    }
+    if (await LoginPage.isOnLoginScreenFast()) {
       await this.ensureLoggedIn();
     }
   }
 
   /**
-   * Tap `rt.back` until the dashboard is visible. Never opens Logout.
+   * Tap `rt.back` / `pending.back` until the dashboard is visible.
    */
   async #returnToHomeWithoutLogout() {
     for (let i = 0; i < 8; i += 1) {
       if (await this.isHomeVisible()) {
         return;
       }
-      if (!(await ui.tapTestId(TEST_IDS.requestTreatment.back))) {
+      if (await ui.tapTestId(TEST_IDS.provider.close)) {
+        await browser.pause(200);
+        continue;
+      }
+      const wentBack =
+        (await ui.tapTestId(TEST_IDS.requestTreatment.back)) ||
+        (await ui.tapTestId(TEST_IDS.pending.back));
+      if (!wentBack) {
         return;
       }
       await browser.pause(280);
@@ -115,6 +154,17 @@ class HomePage {
     if (await this.isPendingPrescriptionsVisible()) {
       ui.log('Request Treatment', 'Already on Pending Prescriptions');
       return;
+    }
+
+    if (
+      (await ui.firstByTestId(TEST_IDS.requestTreatment.nearbySearch)) ||
+      (await ui.firstByTestId(TEST_IDS.requestTreatment.header))
+    ) {
+      ui.log('Request Treatment', 'On New Request — back to Pending Prescriptions');
+      await ui.tapTestId(TEST_IDS.requestTreatment.back);
+      if (await this.isPendingPrescriptionsVisible()) {
+        return;
+      }
     }
 
     if (!(await ui.tapTestId(TEST_IDS.home.requestTreatment))) {

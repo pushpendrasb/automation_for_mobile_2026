@@ -772,6 +772,9 @@ class Ui {
         return;
       }
       this.log('UI', `Dismiss keyboard try ${i + 1}/${maxTries}`);
+      // Vet Practice number pad: accessory first (working Horse/Cattle scripts).
+      // Login/Nearby must not use this helper while Sign In / WebView Submit
+      // sit just above the keypad — those screens have their own dismiss.
       await this.tapKeyboardAccessoryDone();
       await browser.pause(250);
       if (!(await this.isKeyboardVisible())) {

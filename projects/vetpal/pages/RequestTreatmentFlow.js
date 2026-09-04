@@ -61,7 +61,12 @@ class RequestTreatmentFlow {
   }
 
   /**
-   * Nearby Remedy Store through Step 3 WebView.
+   * Nearby Remedy Store. Does not change the Vet Practice happy path
+   * (`requestTreatmentWithVetPractice` / TC-VP-*).
+   *
+   * Pending Prescriptions → Request Vet Advice/Treatment → Nearby Remedy Store
+   * → inline store + branch → animal identification → Step 3 assessment.
+   *
    * @param {string} categoryKey
    */
   async requestTreatmentWithNearbyRemedyStore(categoryKey) {

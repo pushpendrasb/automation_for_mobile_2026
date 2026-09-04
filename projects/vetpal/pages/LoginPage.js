@@ -560,25 +560,96 @@ class LoginPage {
     } catch {
       // continue — tap is cheap if the keyboard is already down
     }
+    // Login only: tap the hint, not the accessory above Sign In Now.
+    // Do not call ui.dismissKeyboard() here — that accessory tap is for
+    // Vet Practice NO. OF ANIMALS and would hit Sign In Now on this screen.
+    if (await ui.tapTestId(TEST_IDS.login.dismissKeyboard)) {
+      await browser.pause(200);
+    }
     try {
-      await ui.dismissKeyboard();
+      if (await browser.isKeyboardShown()) {
+        await ui.tapKeyboardAccessoryDone();
+      }
     } catch {
       // ignore
     }
   }
 
+  /**
+   * True when Sign In already left the tree (Home, Pending, profile, OTP).
+   * Keyboard dismiss can tap Sign In Now because it sits above the keypad.
+   * @returns {Promise<boolean>}
+   */
+  async #alreadyPastLogin() {
+    return Boolean(
+      (await ui.firstByTestId(TEST_IDS.home.requestTreatment)) ||
+        (await ui.firstByTestId(TEST_IDS.pending.requestAdvice)) ||
+        (await ui.firstByTestId(TEST_IDS.profile.firstName)) ||
+        (await ui.firstByTestId(TEST_IDS.otp.input)) ||
+        (await this.#isHomeVisible()),
+    );
+  }
+
+  /**
+   * Tap `login.submit`. If the keypad dismiss already submitted, skip the tap.
+   */
   async tapSignIn() {
     await this.#dismissKeyboardFast();
-    await browser.waitUntil(
-      async () => Boolean(await ui.firstByTestId(TEST_IDS.login.submit)),
-      {
-        timeout: 10000,
-        interval: 200,
-        timeoutMsg:
-          'login.submit not on screen after password — dismiss the keypad, or rebuild/reinstall the Vet Pal app',
-      },
+    if (await this.#alreadyPastLogin()) {
+      ui.log('Login', 'Already past Sign In after dismissing keyboard');
+      return;
+    }
+
+    let submit = await ui.firstByTestId(TEST_IDS.login.submit);
+    if (!submit) {
+      await browser.waitUntil(
+        async () => {
+          if (await this.#alreadyPastLogin()) {
+            return true;
+          }
+          submit = await ui.firstByTestId(TEST_IDS.login.submit);
+          return Boolean(submit);
+        },
+        {
+          timeout: 8000,
+          interval: 200,
+          timeoutMsg:
+            'login.submit not on screen after password — dismiss the keypad, or rebuild/reinstall the Vet Pal app',
+        },
+      );
+    }
+
+    if (await this.#alreadyPastLogin()) {
+      ui.log('Login', 'Already past Sign In after dismissing keyboard');
+      return;
+    }
+
+    if (submit) {
+      ui.log('Login', 'Tap login.submit');
+      try {
+        await submit.click();
+        return;
+      } catch (err) {
+        ui.log('Login', `login.submit click missed: ${err.message}`);
+      }
+    }
+
+    const caption =
+      (await ui.firstCaption('Sign In Now')) ||
+      (await ui.firstCaptionContains('Sign In Now'));
+    if (caption) {
+      ui.log('Login', 'Tap Sign In Now caption');
+      await caption.click().catch(() => ui.press(caption));
+      return;
+    }
+
+    if (await this.#alreadyPastLogin()) {
+      return;
+    }
+
+    throw new Error(
+      'login.submit not found — rebuild/reinstall the Vet Pal app',
     );
-    await ui.requireTapTestId(TEST_IDS.login.submit);
   }
 
   async #tapCenter(el) {

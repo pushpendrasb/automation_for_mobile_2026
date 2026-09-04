@@ -231,10 +231,79 @@ function categoryByKey(key) {
   return found;
 }
 
+/**
+ * CLI / env identification mode. Empty → category default.
+ * @param {string} [raw]
+ * @returns {'group'|'tags'|null}
+ */
+function normalizeIdentificationMode(raw) {
+  const n = String(raw || '')
+    .trim()
+    .toLowerCase();
+  if (!n) {
+    return null;
+  }
+  if (n === 'group' || n === 'g') {
+    return 'group';
+  }
+  if (
+    n === 'tags' ||
+    n === 'tag' ||
+    n === 'microchip' ||
+    n === 'microchip/id' ||
+    n === 'id'
+  ) {
+    return 'tags';
+  }
+  throw new Error(
+    `Unknown identification mode "${raw}". Use --mode=group or --mode=tags`,
+  );
+}
+
+/**
+ * Fill payload for Group or Microchip/ID. CLI `--mode` / `ANIMAL_ID_MODE`
+ * overrides the category default.
+ * @param {string} categoryKey
+ * @param {string} [modeOverride]
+ */
+function identificationFor(categoryKey, modeOverride) {
+  const cat = categoryByKey(categoryKey);
+  const mode =
+    normalizeIdentificationMode(modeOverride) || cat.defaultMode;
+  const prefix = cat.key.toUpperCase();
+  if (mode === 'group') {
+    return {
+      mode: 'group',
+      groupName:
+        cat.identification.groupName || `${prefix}-AUTO-GROUP`,
+      numberOfAnimals:
+        cat.identification.numberOfAnimals || String(MIN_GROUP_ANIMALS),
+      averageAge: cat.identification.averageAge || '12',
+      ageUnit: cat.identification.ageUnit || 'Days',
+    };
+  }
+  return {
+    mode: 'tags',
+    names: cat.identification.names || [
+      `${prefix}-AUTO-001`,
+      `${prefix}-AUTO-002`,
+      `${prefix}-AUTO-003`,
+    ],
+    tags: cat.identification.tags || [
+      `${prefix.slice(0, 3)}-001`,
+      `${prefix.slice(0, 3)}-002`,
+      `${prefix.slice(0, 3)}-003`,
+    ],
+    ages: ['12', '12', '12'],
+  };
+}
+
 module.exports = {
   animalCategories,
   requestTreatmentData,
   categoryByKey,
+  identificationFor,
+  normalizeIdentificationMode,
   TAG_SLOT_COUNT,
   MIN_GROUP_ANIMALS,
 };

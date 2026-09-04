@@ -58,7 +58,8 @@ Kept the existing project (`projects/vetpal/`), not a new `automation/` tree.
 - Vet Practice: **one** subscribed vet auto-fills the field — skip the popup. **Several** vets → field stays **Select** → tap field → `SelectVetPopup` row at **`VET_PRACTICE_INDEX`** → **Save** (same pattern as the store modal). This popup has no search box.
 - Vet Practice popup: tap row at **`VET_PRACTICE_INDEX`** (0 = first) then **Save**. Skip the popup when the field is already filled (one subscribed vet).
 - The store modal is an 88% bottom sheet. The top ~12% is a dismiss overlay (`remedyModalDismissArea`). Keyboard dismiss must tap the sheet header / Return key — never y≈80–90, which closes the modal.
-- Nearby path uses inline pharmacy cards (`NewPrescriptionForRemedyStore.js`), not the modal.
+- Nearby path uses inline pharmacy cards (`NewPrescriptionForRemedyStore.js`), not the Remedy Store modal. After a card tap, one branch auto-fills; two or more opens CatPopup by itself. There is **no** `rt.branch.field` on Nearby (that ID is Vet Practice only). Rebuild for `rt.nearby.branch` on the Branch line (re-open the sheet).
+- Nearby `callGetPharmaList` is **subscribed pharmacies**, not the Vet Practice dispense-store modal. `REMEDY_STORE_NAME` (e.g. Southwood Pharmacy) may match nothing — the script clears search and taps `rt.nearby.store.0` (or `--store=N`).
 - Exact picker strings (`Cattle - Dairy` vs other subtypes) come from the API — tests match **Horse / Cattle / Sheep / Goat / Deer / Pig / Poultry**
 - Nearby Step 3 HTML fields change per species (e.g. Horse antiparasitic age groups). Filled generically; a new required widget can still fail until inspected on device
 - No production app changes (no new testIDs). Dedicated IDs would help: provider cards, practice/store/branch fields, category dropdown, identification inputs, Submit
@@ -71,8 +72,11 @@ appium   # other terminal
 
 npm run test:ios:rt:vet
 npm run test:ios:rt:vet:neg
+# Nearby Remedy Store (Choose a Provider → Nearby Remedy Store):
 npm run test:ios:rt:nearby
 npm run test:ios:rt:nearby:neg
+npm run test:ios:rt:horse -- --nearby
+npm run test:ios:rt:cattle -- --nearby --store=0 --branch=0
 npm run test:ios:rt:horse
 npm run test:ios:rt:cattle
 npm run test:ios:rt:sheep
@@ -85,6 +89,10 @@ npm run test:ios:rt:cattle -- 2 1
 # practice, store, branch (0 = first branch):
 npm run test:ios:rt:cattle -- --practice=0 --store=1 --branch=0
 npm run test:ios:rt:cattle -- 2 1 0
+# identification mode (group | tags) for any category:
+npm run test:ios:rt:horse -- --mode=tags
+npm run test:ios:rt:cattle -- --mode=group --practice=1 --store=1 --branch=0
+ANIMAL_ID_MODE=group npm run test:ios:rt:vet
 # names (search) for this run:
 npm run test:ios:rt:cattle -- --practice-name="Dev Test Account-U" --store-name="Southwood Pharmacy"
 npm run test:android:rt:vet

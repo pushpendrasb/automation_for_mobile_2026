@@ -4,9 +4,14 @@
  *
  * Default mode follows `getDefaultIdentificationMode` in the app:
  * Horse / Pig / Poultry → Group; Cattle / Sheep / Goat / Deer → Microchip/ID.
+ * Override with `--mode=group` | `--mode=tags` (`ANIMAL_ID_MODE`).
  */
 const { ui } = require('./ui');
-const { categoryByKey } = require('../data/animalCategories');
+const {
+  categoryByKey,
+  identificationFor,
+} = require('../data/animalCategories');
+const { providerData } = require('../data/providerData');
 const { TEST_IDS } = require('../data/testIds');
 
 class AnimalIdentificationPage {
@@ -27,6 +32,74 @@ class AnimalIdentificationPage {
     );
     ui.log('Animal Identification', `Fill ${id}`);
     await ui.typeByTestId(id, value);
+  }
+
+  /**
+   * True when Group fields are in the tree.
+   * @returns {Promise<boolean>}
+   */
+  async #isGroupReady() {
+    return Boolean(
+      await ui.firstByTestId(TEST_IDS.animalId.field('group', 'groupName', 0)),
+    );
+  }
+
+  /**
+   * True when Microchip/ID fields are in the tree (horse Name or Tag/ID).
+   * @returns {Promise<boolean>}
+   */
+  async #isTagsReady() {
+    return Boolean(
+      (await ui.firstByTestId(
+        TEST_IDS.animalId.field('tags', 'tagNumber', 0),
+      )) ||
+        (await ui.firstByTestId(
+          TEST_IDS.animalId.field('tags', 'animalName', 0),
+        )),
+    );
+  }
+
+  /**
+   * Tap Microchip/ID or Group. testID first; caption if the app is older.
+   * @param {'group'|'tags'} mode
+   */
+  async selectIdentificationMode(mode) {
+    const wantedGroup = mode === 'group';
+    if (wantedGroup ? await this.#isGroupReady() : await this.#isTagsReady()) {
+      ui.log('Animal Identification', `Already on ${mode}`);
+      return;
+    }
+
+    ui.log('Animal Identification', `Switch segment → ${mode}`);
+    await ui.dismissKeyboardUntilGone(2);
+
+    const id = wantedGroup
+      ? TEST_IDS.animalId.modeGroup
+      : TEST_IDS.animalId.modeTags;
+    const tappedId = await ui.tapTestId(id);
+    if (!tappedId) {
+      const label = wantedGroup ? 'Group' : 'Microchip/ID';
+      const el =
+        (await ui.firstCaption(label)) ||
+        (await ui.firstCaptionContains(label));
+      if (!el) {
+        throw new Error(
+          `Identification segment "${label}" not found — rebuild/reinstall the Vet Pal app`,
+        );
+      }
+      ui.log('Animal Identification', `Tap caption ${label}`);
+      await el.click().catch(() => ui.press(el));
+    }
+
+    await browser.waitUntil(
+      async () =>
+        wantedGroup ? this.#isGroupReady() : this.#isTagsReady(),
+      {
+        timeout: 8000,
+        interval: 200,
+        timeoutMsg: `Did not switch to ${mode} identification`,
+      },
+    );
   }
 
   /**
@@ -71,6 +144,31 @@ class AnimalIdentificationPage {
   }
 
   /**
+   * Poultry Microchip/ID: Tag/ID N + Age N (unit defaults to Days).
+   * @param {{ tags?: string[], ages?: string[] }} data
+   */
+  async fillPoultryTags(data) {
+    const tags = data.tags || [];
+    const ages = data.ages || [];
+    const count = Math.min(3, Math.max(tags.length, ages.length));
+    for (let i = 0; i < count; i += 1) {
+      if (tags[i]) {
+        await this.fillByTestId(
+          TEST_IDS.animalId.field('tags', 'tagNumber', i),
+          tags[i],
+        );
+      }
+      if (ages[i]) {
+        await this.fillByTestId(
+          TEST_IDS.animalId.field('tags', 'age', i),
+          ages[i],
+        );
+      }
+    }
+    ui.log('Animal Identification', `Filled ${count} poultry tag/age entries`);
+  }
+
+  /**
    * Group name + animal count (+ poultry average age).
    * NO. OF ANIMALS uses a number-pad (no Return) — dismiss Done before
    * leaving this block, or Submit Request stays under the keypad.
@@ -98,23 +196,30 @@ class AnimalIdentificationPage {
   }
 
   /**
-   * Fill the mode the category actually opens in (Group vs Microchip/ID).
-   * Horse tags (Name N + Microchip/ID N) only apply if `data.mode === 'tags'`.
+   * Switch to Group or Microchip/ID (CLI `--mode`) then fill that mode.
    * @param {string} categoryKey
    * @param {object} [override]
    */
   async fillAnimalIdentification(categoryKey, override) {
     const cat = categoryByKey(categoryKey);
-    const data = override || cat.identification;
+    const mode =
+      (override && override.mode) ||
+      providerData.identificationMode ||
+      cat.defaultMode;
+    const data = override || identificationFor(cat.key, mode);
     ui.log(
       'Animal Identification',
       `Fill ${cat.key} (${cat.layout}, ${data.mode}) by testID`,
     );
 
+    await this.selectIdentificationMode(data.mode);
+
     if (data.mode === 'group') {
       await this.fillGroup(data, { poultry: cat.layout === 'poultry' });
     } else if (cat.layout === 'horse' && data.mode === 'tags') {
       await this.fillHorseTags(data);
+    } else if (cat.layout === 'poultry' && data.mode === 'tags') {
+      await this.fillPoultryTags(data);
     } else if (data.mode === 'tags') {
       await this.fillLivestockTags(data);
     } else {
