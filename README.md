@@ -3,24 +3,37 @@
 Appium + WebdriverIO automation lives **outside** the React Native app repos.
 
 ```text
-mobile-automation/
+automation_for_mobile_2026/
+├── SETUP.md                # Fresh Mac + new project (start here)
+├── scripts/
+│   ├── bootstrap.sh        # No Node yet? Run this
+│   ├── setup-mac.js        # Appium + .env wizard
+│   └── new-project.js      # Scaffold projects/<id>
 ├── framework/              # Shared — same for every app
-│   ├── config/             # iOS/Android capabilities, WDIO factory
-│   ├── hooks/              # Screenshots + HTML/JSON reports
-│   └── utils/              # testReport, checkDevices
 └── projects/
-    ├── roskids/            # RosKids pages + tests
-    └── vetpal/             # Vet-Pal Animal Owner pages + tests
-        ├── pages/
-        ├── tests/
-        ├── data/
-        ├── catalog/
-        ├── helpers/
-        ├── .env            # credentials + device IDs (not committed)
-        └── project.config.js
+    ├── _template/          # Used by npm run new-project
+    ├── roskids/
+    └── vetpal/
 ```
 
-## Quick start (RosKids)
+## Fresh Mac (no Node / Appium)
+
+```bash
+cd /path/to/automation_for_mobile_2026
+bash scripts/bootstrap.sh
+```
+
+See **[SETUP.md](./SETUP.md)** for the full wizard flow, Cursor one-prompt, and troubleshooting.
+
+## Already have Node
+
+```bash
+npm run setup                          # pick project interactively
+npm run setup -- --project vetpal      # VetPal on this Mac
+npm run new-project                    # scaffold a new app
+```
+
+## Run tests (after setup)
 
 **Terminal 1 — Appium**
 
@@ -28,24 +41,22 @@ mobile-automation/
 appium
 ```
 
-**Terminal 2 — tests**
+**Terminal 2**
 
 ```bash
-cd ~/Documents/React_Native/RosKids/mobile-automation/projects/roskids
-npm install
-cp .env.example .env
-# Edit .env — copy from old automation/.env if you had one
+cd projects/vetpal   # or roskids / your new project
 npm run check:devices:ios
-npm run test:ios:positive
+npm run test:ios:signin
 ```
 
-## Add a new app later
+## Add a new app
 
-1. Copy `projects/roskids/` → `projects/your-app/`
-2. Update `project.config.js` (name, bundle IDs, report filename)
-3. Replace `pages/`, `tests/`, `data/`, `catalog/`, `helpers/`
-4. Create `.env` for that app
-5. `npm install` in the new project folder
+```bash
+npm run new-project
+# then replace pages/, tests/, data/ for that app
+```
+
+Or use the wizard option **Create a new project from template**.
 
 Framework code stays unchanged.
 
@@ -55,8 +66,3 @@ Framework code stays unchanged.
 |----------|---------|
 | Android | Linux or macOS |
 | iOS | **macOS only** (Xcode + WebDriverAgent) |
-
-## RosKids app repo
-
-The React Native app at `RoskidsReactnativeApp/` no longer needs an `automation/` folder.
-See `automation/README.md` inside the app for the redirect path.

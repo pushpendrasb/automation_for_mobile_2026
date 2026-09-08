@@ -9,21 +9,30 @@ Sign-In automation for **mobile number + password** login (iOS + Android).
 
 ## Setup
 
+**Fresh Mac / PM laptop:** from repo root run `bash scripts/bootstrap.sh --project vetpal`  
+(see [SETUP.md](../../SETUP.md)).
+
 ```bash
-cd ~/Documents/React_Native/RosKids/mobile-automation/projects/vetpal
+cd /path/to/automation_for_mobile_2026/projects/vetpal
 npm install
+npm run setup          # writes THIS Mac's .env (device + Team ID)
+```
+
+Or manually:
+
+```bash
 cp .env.example .env
 ```
 
-Edit `.env`:
+Edit `.env` (use **this Mac’s** device — do not copy another person’s UDID/Team ID):
 
 | Variable | Your value |
 |----------|------------|
 | `VETPAL_COUNTRY_CODE` | `+353` (default in app) |
-| `VETPAL_TEST_MOBILE` | `811111111` |
-| `VETPAL_TEST_PASSWORD` | `H123456789` |
-| `IOS_DEVICE_UDID` | `00008120-000109300A00201E` |
-| `IOS_TEAM_ID` | `D6J7ZWYT6G` |
+| `VETPAL_TEST_MOBILE` | test mobile |
+| `VETPAL_TEST_PASSWORD` | test password |
+| `IOS_DEVICE_UDID` | from `xcrun xctrace list devices` |
+| `IOS_TEAM_ID` | Xcode → Accounts → Team ID |
 | `IOS_BUNDLE_ID` | `ie.vetpal` |
 | `ANDROID_APP_PACKAGE` | `ie.vetpal` |
 

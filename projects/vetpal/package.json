@@ -4,6 +4,7 @@
   "private": true,
   "description": "Vet-Pal Animal Owner Appium automation (pages + tests)",
   "scripts": {
+    "setup": "node ../../scripts/setup-mac.js --project vetpal",
     "test": "npm run test:ios",
     "test:ios": "wdio run ./wdio.ios.conf.js",
     "test:android": "wdio run ./wdio.android.conf.js",

@@ -100,6 +100,15 @@ Automation does **not** live inside app repos. Old RosKids in-app folder `Roskid
 
 ## 4. Prerequisites (install once per machine)
 
+**Preferred (fresh Mac):** see **[SETUP.md](./SETUP.md)**
+
+```bash
+bash scripts/bootstrap.sh                 # Homebrew + Node if needed, then wizard
+npm run setup -- --project vetpal         # if Node is already installed
+```
+
+Manual install (same result as the wizard):
+
 ```bash
 node -v          # >= 18
 npm -v
@@ -274,10 +283,19 @@ mobile-automation/projects/vetpal/
 
 ## 8. Adding a third app later
 
-1. Copy `projects/roskids/` → `projects/new-app/`
+**Preferred:**
+
+```bash
+npm run new-project
+npm run setup -- --project <id>
+```
+
+Manual (legacy):
+
+1. Copy `projects/_template/` → `projects/new-app/` (or copy roskids/vetpal)
 2. Edit `project.config.js` (`displayName`, `reportBaseName`, bundle defaults)
 3. Replace `pages/`, `tests/`, `data/`, `catalog/`
-4. Copy `.env.example` → `.env`
+4. Run setup wizard or copy `.env.example` → `.env` (use **this Mac’s** UDID/Team ID)
 5. `npm install` in new project folder
 
 Framework stays unchanged.

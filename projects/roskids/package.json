@@ -4,6 +4,7 @@
   "private": true,
   "description": "RosKids Appium automation project (pages + tests only)",
   "scripts": {
+    "setup": "node ../../scripts/setup-mac.js --project roskids",
     "test": "npm run test:ios",
     "test:ios": "wdio run ./wdio.ios.conf.js",
     "test:android": "wdio run ./wdio.android.conf.js",
