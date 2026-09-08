@@ -3,6 +3,7 @@
  */
 const { REQUEST_TREATMENT_TEST_CASES } = require('./requestTreatmentCatalog');
 const { SIGN_UP_TEST_CASES } = require('./signUpCatalog');
+const { SCREEN_WALK_TEST_CASES } = require('./screenWalkCatalog');
 
 /** @type {Array<Record<string, string | string[]>>} */
 const SIGN_IN_TEST_CASES = [
@@ -102,6 +103,7 @@ const ALL_TEST_CASES = [
   ...SIGN_IN_TEST_CASES,
   ...SIGN_UP_TEST_CASES,
   ...REQUEST_TREATMENT_TEST_CASES,
+  ...SCREEN_WALK_TEST_CASES,
 ];
 
 function findCaseByTitle(title) {
@@ -121,6 +123,7 @@ module.exports = {
   SIGN_IN_TEST_CASES,
   SIGN_UP_TEST_CASES,
   REQUEST_TREATMENT_TEST_CASES,
+  SCREEN_WALK_TEST_CASES,
   ALL_TEST_CASES,
   findCaseByTitle,
 };

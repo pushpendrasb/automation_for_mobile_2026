@@ -14,7 +14,7 @@ module.exports = {
   junitFile: 'vetpal-junit.xml',
 
   specs: ['./tests/**/*.test.js'],
-  mochaTimeout: 600000,
+  mochaTimeout: 900000,
 
   // Update after you confirm bundle/package from the app repo or .env
   defaults: {

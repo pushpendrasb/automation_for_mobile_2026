@@ -1,0 +1,163 @@
+/**
+ * Catalog for the one-command Home + menu screen walk.
+ * Delete Account is asserted on My Profile and never tapped.
+ */
+/** @type {Array<Record<string, string | string[]>>} */
+const SCREEN_WALK_TEST_CASES = [
+  {
+    caseId: 'VP-SM-001',
+    module: 'Screen Walk',
+    type: 'positive',
+    title: 'Login then Home tiles are present',
+    understanding:
+      'After Sign In the dashboard must show all eight Home.js tiles (home.tile.0–7).',
+    steps: ['Sign in with .env mobile + password', 'Check home.tile.0 through home.tile.7'],
+    expected: 'Home with Request Treatment through My Profile tiles',
+    passWhen: 'All eight tile testIDs exist',
+    failWhen: 'Still on Sign In or a tile missing',
+  },
+  {
+    caseId: 'VP-SM-002',
+    module: 'Screen Walk',
+    type: 'positive',
+    title: 'Request Treatment tile opens Pending Prescriptions',
+    understanding:
+      'home.tile.0: scroll Practice list, open Request Details and scroll, back, Store Request scripts scroll, then Request Vet Advice/Treatment for Vet Practice and Nearby (Horse).',
+    steps: [
+      'Tap Request Treatment',
+      'Scroll Practice Request Status list',
+      'Open first prescription card → Product Details (Request Details) → swipe up/down → header back to list',
+      'Tap Store Request scripts and scroll',
+      'Tap Request Vet Advice/Treatment → Vet Practice prescription',
+      'Tap Request Vet Advice/Treatment → Nearby Remedy Store prescription',
+      'On the Pending list open the first card → Request Details → scroll up/down → back',
+      'Tap IcnBack to Home',
+    ],
+    expected: 'Both prescriptions submitted; Home afterwards so later tiles can run',
+    passWhen: 'Vet Practice and Nearby flows complete; home.tile.0 visible',
+    failWhen: 'Stuck on Pending (scroll-to-top only) or a later tile cannot tap Home',
+  },
+  {
+    caseId: 'VP-SM-003',
+    module: 'Screen Walk',
+    type: 'positive',
+    title: 'Dispensed Prescriptions tile',
+    understanding:
+      'home.tile.1 opens Dispensed Prescriptions. Open the first card into Product Details (header: Prescription), swipe up/down, header back to the list, then Home.',
+    steps: [
+      'Tap Dispensed Prescriptions',
+      'Open first list card → Product Details (Prescription) → swipe up/down → header back',
+      'Back to Home',
+    ],
+    expected: 'Dispensed Prescriptions then Home',
+    passWhen: 'Header visible then Home',
+    failWhen: 'Pending title or stuck',
+  },
+  {
+    caseId: 'VP-SM-004',
+    module: 'Screen Walk',
+    type: 'positive',
+    title: 'My Appointments tile and tabs',
+    understanding:
+      'home.tile.2 opens My Appointments. Must tap each top tab: Pending, Confirmed, Completed (TabPill is a Button, not StaticText).',
+    steps: [
+      'Tap My Appointments',
+      'Tap Pending / Confirmed / Completed tabs; open a row if the list has one',
+      'Tap Book an Appointment, then back',
+      'Back to Home',
+    ],
+    expected: 'My Appointments then Home',
+    passWhen: 'Header visible then Home',
+    failWhen: 'Screen missing',
+  },
+  {
+    caseId: 'VP-SM-005',
+    module: 'Screen Walk',
+    type: 'positive',
+    title: 'My Reports shows Coming Soon',
+    understanding: 'home.tile.3 has no screen — Utils.showToast(Coming Soon). Stay on Home.',
+    steps: ['Tap My Reports', 'Wait for Coming Soon toast'],
+    expected: 'Toast Coming Soon; still on Home',
+    passWhen: 'Toast + Home tiles still visible',
+    failWhen: 'Navigated away or no toast',
+  },
+  {
+    caseId: 'VP-SM-006',
+    module: 'Screen Walk',
+    type: 'positive',
+    title: 'My Remedy Store tile and tabs',
+    understanding: 'home.tile.4 opens My Remedy Store. Tap My Stores / Nearby Stores.',
+    steps: ['Tap My Remedy Store', 'Tap store tabs', 'Back'],
+    expected: 'My Remedy Store then Home',
+    passWhen: 'Header visible then Home',
+    failWhen: 'Screen missing',
+  },
+  {
+    caseId: 'VP-SM-007',
+    module: 'Screen Walk',
+    type: 'positive',
+    title: 'My Practices tile',
+    understanding: 'home.tile.5 opens My Vet Practice.',
+    steps: ['Tap My Practices', 'Check My Vet Practice', 'Back'],
+    expected: 'My Vet Practice then Home',
+    passWhen: 'Header visible then Home',
+    failWhen: 'Screen missing',
+  },
+  {
+    caseId: 'VP-SM-008',
+    module: 'Screen Walk',
+    type: 'positive',
+    title: 'My Messages tile',
+    understanding: 'home.tile.6 opens My Messages.',
+    steps: ['Tap My Messages', 'Check header', 'Back'],
+    expected: 'My Messages then Home',
+    passWhen: 'Header visible then Home',
+    failWhen: 'Screen missing',
+  },
+  {
+    caseId: 'VP-SM-009',
+    module: 'Screen Walk',
+    type: 'positive',
+    title: 'My Profile — skip Delete Account, open Edit Profile',
+    understanding:
+      'home.tile.7 opens My Profile. Delete Account must stay un-tapped. Edit Profile is opened then closed.',
+    steps: [
+      'Tap My Profile',
+      'Scroll until Delete Account is visible — do not tap',
+      'Tap Edit Profile',
+      'Back to My Profile then Home',
+    ],
+    expected: 'My Profile and Edit Profile; account not deleted',
+    passWhen: 'Edit Profile opened and session still logged in on Home',
+    failWhen: 'Tapped Delete Account or logged out',
+  },
+  {
+    caseId: 'VP-SM-010',
+    module: 'Screen Walk',
+    type: 'positive',
+    title: 'Notifications header',
+    understanding: 'Home bell opens My Notifications. Do not tap Clear All.',
+    steps: ['Tap notifications', 'Check My Notifications', 'Back'],
+    expected: 'My Notifications then Home',
+    passWhen: 'Header visible then Home',
+    failWhen: 'Cleared notifications or stuck',
+  },
+  {
+    caseId: 'VP-SM-011',
+    module: 'Screen Walk',
+    type: 'positive',
+    title: 'Side menu screens — skip Logout confirm and Mail Us',
+    understanding:
+      'Drawer: Profile, Contact Us, About Us, Tell a Friend (dismiss share), Change Password (Cancel), Logout (Cancel).',
+    steps: [
+      'Open menu',
+      'Visit each row except confirming Logout',
+      'Dismiss share and Change Password without saving',
+    ],
+    expected: 'Each menu screen checked; still logged in on Home',
+    passWhen: 'All menu destinations opened; Logout cancelled',
+    failWhen: 'Logged out or Mail composer opened',
+  },
+];
+
+module.exports = { SCREEN_WALK_TEST_CASES };

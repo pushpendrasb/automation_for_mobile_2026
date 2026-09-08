@@ -55,8 +55,9 @@ class NearbyRemedyStorePage {
   }
 
   /**
-   * Nearby list is inline cards. Type into search when index is 0, then tap
-   * `rt.nearby.store.${index}`.
+   * Nearby list is inline cards. Do not type in Search — that field hangs
+   * XCUITest when `REMEDY_STORE_NAME` is not subscribed (Southwood). Tap the
+   * card (tick), same idea as Animal Health Confirmation on Step 3.
    * @param {string} [storeName]
    * @param {number} [index]
    */
@@ -69,34 +70,13 @@ class NearbyRemedyStorePage {
     const name = String(storeName || '').trim();
     ui.log(
       'Provider',
-      `Nearby store search="${name || '(none)'}" card=${cardIndex}`,
+      `Nearby store card=${cardIndex} name="${name || '(none)'}" (no search field)`,
     );
 
     await this.#waitForStoreCards();
 
-    if (name && cardIndex === 0) {
-      await this.#typeNearbySearch(name);
-      const matched = await ui.waitTrue(
-        () => ui.firstByTestId(TEST_IDS.requestTreatment.nearbyStoreCard(0)),
-        2500,
-        200,
-      );
-      if (!matched) {
-        ui.log(
-          'Provider',
-          `Nearby search "${name}" matched no subscribed store — clear search and pick from the full list`,
-        );
-        await this.#clearNearbySearch();
-        await this.#waitForStoreCards();
-        if (await this.#tapStoreByName(name)) {
-          return;
-        }
-      }
-    } else if (name && cardIndex > 0) {
-      ui.log(
-        'Provider',
-        `Nearby skip search (index ${cardIndex}) so the full list stays in order`,
-      );
+    if (name && (await this.#tapStoreByName(name))) {
+      return;
     }
     await ui.requireTapTestId(
       TEST_IDS.requestTreatment.nearbyStoreCard(cardIndex),
@@ -261,11 +241,32 @@ class NearbyRemedyStorePage {
   }
 
   /**
-   * Footer Next (`rt.next`). Does not retry Vet Practice fields.
+   * Footer Next (`rt.next`).
+   * @param {{ until?: 'animal' }} [opts] `until: 'animal'` retries until
+   * Step 2. Do not use that when leaving Step 2 — Step 3 has Submit, not Next.
    */
-  async clickNext() {
+  async clickNext(opts = {}) {
     ui.log('Request Treatment', 'Nearby Next (rt.next)');
     await ui.dismissKeyboardUntilGone(2);
+    await ui.waitTrue(
+      async () => !(await ui.firstByTestId(TEST_IDS.catPopup.save)),
+      2500,
+      100,
+    );
+    await browser.pause(300);
+    await ui.requireTapTestId(TEST_IDS.requestTreatment.next);
+    if (opts.until !== 'animal') {
+      return;
+    }
+    const onStep2 = await ui.waitTrue(
+      () => ui.firstByTestId(TEST_IDS.requestTreatment.animalCategoryField),
+      2500,
+      150,
+    );
+    if (onStep2) {
+      return;
+    }
+    ui.log('Request Treatment', 'Nearby Next retry (still on Select Remedy Store)');
     await ui.requireTapTestId(TEST_IDS.requestTreatment.next);
   }
 

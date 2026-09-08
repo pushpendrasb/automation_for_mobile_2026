@@ -37,6 +37,13 @@ appium
 npm run check:devices:ios
 npm run test:ios:signin
 npm run test:android:signin
+
+# Login once, then each Home tile (back to Home before the next tile)
+# Prescription list → Product Details → swipe up/down → header back to list
+# Request Treatment submits Vet Practice + Nearby (Horse)
+# Messages starts a chat if the list is empty
+# (skips Delete Account, Mail Us, Clear All, password update, Logout OK)
+npm run test:ios:screens
 ```
 
 ## Sign-In UI (from app)
@@ -62,6 +69,7 @@ Configure via `VETPAL_HOME_INDICATORS` in `.env`.
 | VP-SI-P01 | Login form ready |
 | VP-SI-P02 | Valid login → Home |
 | VP-SI-N01–N05 | Negative Sign-In |
+| VP-SM-001–011 | Screen walk: login, every tile + menu (skip Delete Account) |
 
 ## Request Treatment
 

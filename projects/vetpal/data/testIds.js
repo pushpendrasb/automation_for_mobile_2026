@@ -1,8 +1,10 @@
 /**
- * Mirrors vetpal-animal-owner/src/Constants/testIds.js
+ * Mirrors IDs already shipped in vetpal-animal-owner (src/Constants/testIds.js
+ * plus SideMenu.js `menu.item.${id}`). Do not add app testIDs from automation —
+ * the animal-owner app is not modified for this suite.
  *
- * Rebuild/reinstall the Vet Pal app after those testIDs land.
- * Page objects tap these IDs only — no screen width/height fallbacks.
+ * Page objects prefer these IDs, then captions / header controls.
+ * No screen width/height tap fallbacks.
  */
 const TEST_IDS = {
   login: {
@@ -29,6 +31,8 @@ const TEST_IDS = {
   },
   menu: {
     logout: 'menu.logout',
+    /** Side drawer row (SideMenu.js ids 1–6). Never use 7 here — that is logout. */
+    item: id => `menu.item.${id}`,
   },
   alert: {
     ok: 'alert.ok',
@@ -36,7 +40,7 @@ const TEST_IDS = {
   },
   pending: {
     requestAdvice: 'pending.requestAdvice',
-    /** Pending Prescriptions header back (`MyPrescriptions.js`). */
+    /** Pending Prescriptions header back (`MyPrescriptions.js`) when wired. */
     back: 'pending.back',
   },
   provider: {

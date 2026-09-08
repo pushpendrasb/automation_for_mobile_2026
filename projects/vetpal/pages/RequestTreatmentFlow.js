@@ -22,7 +22,7 @@ class RequestTreatmentFlow {
    * Full Vet Practice happy path for one animal category.
    * @param {string} categoryKey Horse|Cattle|…
    */
-  async requestTreatmentWithVetPractice(categoryKey) {
+  async requestTreatmentWithVetPractice(categoryKey, opts = {}) {
     const cat = categoryByKey(categoryKey);
     const practice = providerData.vetPractice;
     const store = providerData.remedyStore;
@@ -30,7 +30,11 @@ class RequestTreatmentFlow {
     const storeIndex = providerData.remedyStoreIndex;
     const branchIndex = providerData.branchIndex;
 
-    await this.openRequestTreatment();
+    if (opts.fromPending) {
+      await ProviderSelectionPage.clickRequestVetAdviceTreatment();
+    } else {
+      await this.openRequestTreatment();
+    }
     await ProviderSelectionPage.selectVetPractice();
     await VetPracticeFormPage.assertStep1();
 
@@ -69,17 +73,21 @@ class RequestTreatmentFlow {
    *
    * @param {string} categoryKey
    */
-  async requestTreatmentWithNearbyRemedyStore(categoryKey) {
+  async requestTreatmentWithNearbyRemedyStore(categoryKey, opts = {}) {
     const cat = categoryByKey(categoryKey);
     const store = providerData.remedyStore;
     const storeIndex = providerData.remedyStoreIndex;
 
-    await this.openRequestTreatment();
+    if (opts.fromPending) {
+      await ProviderSelectionPage.clickRequestVetAdviceTreatment();
+    } else {
+      await this.openRequestTreatment();
+    }
     await ProviderSelectionPage.selectNearby();
     await NearbyRemedyStorePage.assertNearbyFlow();
     await NearbyRemedyStorePage.selectNearbyRemedyStore(store, storeIndex);
     await NearbyRemedyStorePage.selectBranch(providerData.branchIndex);
-    await NearbyRemedyStorePage.clickNext();
+    await NearbyRemedyStorePage.clickNext({ until: 'animal' });
     await NearbyRemedyStorePage.assertAnimalCategoryScreen();
 
     await NearbyRemedyStorePage.selectAnimalCategory(cat.key);

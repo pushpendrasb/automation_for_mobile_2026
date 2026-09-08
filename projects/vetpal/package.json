@@ -27,6 +27,8 @@
     "test:ios:rt:deer": "node ./scripts/runRtCategory.js deer",
     "test:ios:rt:pig": "node ./scripts/runRtCategory.js pig",
     "test:ios:rt:poultry": "node ./scripts/runRtCategory.js poultry",
+    "test:ios:screens": "wdio run ./wdio.ios.conf.js --spec ./tests/smoke/appScreenWalk.test.js",
+    "test:android:screens": "wdio run ./wdio.android.conf.js --spec ./tests/smoke/appScreenWalk.test.js",
     "test:android:rt:vet": "wdio run ./wdio.android.conf.js --spec ./tests/requestTreatment/vetPractice.positive.test.js",
     "test:android:rt:nearby": "wdio run ./wdio.android.conf.js --spec ./tests/requestTreatment/nearbyRemedyStore.positive.test.js",
     "check:devices": "AUTOMATION_PROJECT_ROOT=. node ../../framework/utils/checkDevices.js",

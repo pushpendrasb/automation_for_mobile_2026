@@ -390,6 +390,34 @@ class Ui {
   }
 
   /**
+   * One getElementRect for an element. This is that node's box on this
+   * device — not the screen size. `{ y: 475, x: 38, width: 344, height: 21 }`
+   * is a list label, not a full-screen tap target.
+   * @param {WebdriverIO.Element} el
+   * @returns {Promise<{ x: number, y: number, w: number, h: number }|null>}
+   */
+  async rect(el) {
+    if (!el) {
+      return null;
+    }
+    try {
+      const id = el.elementId || el.ELEMENT;
+      const r = id
+        ? await browser.getElementRect(id)
+        : await el.getSize().then(async size => {
+            const loc = await el.getLocation();
+            return { x: loc.x, y: loc.y, width: size.width, height: size.height };
+          });
+      if (!r || r.width == null || r.height == null) {
+        return null;
+      }
+      return { x: r.x, y: r.y, w: r.width, h: r.height };
+    } catch {
+      return null;
+    }
+  }
+
+  /**
    * Touch the center of a *found* element. Not for screen-fraction taps.
    * Prefer {@link tapTestId} / {@link tap}.
    * @param {number} x
@@ -430,9 +458,11 @@ class Ui {
    * @param {WebdriverIO.Element} el
    */
   async press(el) {
-    const loc = await el.getLocation();
-    const size = await el.getSize();
-    await this.pressAt(loc.x + size.width / 2, loc.y + size.height / 2);
+    const r = await this.rect(el);
+    if (!r) {
+      return;
+    }
+    await this.pressAt(r.x + r.w / 2, r.y + r.h / 2);
   }
 
   /**
@@ -458,18 +488,18 @@ class Ui {
     if (!(await this.isShown(el))) {
       return false;
     }
-    try {
-      const size = await el.getSize();
-      if (size.width < 4 || size.height < 4) {
-        return false;
-      }
-      if (size.width > 380 && size.height > 400) {
-        return false;
-      }
-      return true;
-    } catch {
+    const r = await this.rect(el);
+    if (!r) {
       return false;
     }
+    if (r.w < 4 || r.h < 4) {
+      return false;
+    }
+    // Skip Window / Application. Do not use a 390-pt iPhone width — SE is ~375.
+    if (r.h > 180) {
+      return false;
+    }
+    return true;
   }
 
   /**
@@ -630,15 +660,14 @@ class Ui {
       if (!(await this.isUsableCaption(el))) {
         continue;
       }
-      try {
-        const loc = await el.getLocation();
-        const key = loc.y * 10000 + loc.x;
-        if (key < bestKey) {
-          best = el;
-          bestKey = key;
-        }
-      } catch {
-        // ignore
+      const r = await this.rect(el);
+      if (!r) {
+        continue;
+      }
+      const key = r.y * 10000 + r.x;
+      if (key < bestKey) {
+        best = el;
+        bestKey = key;
       }
     }
     return best;
@@ -669,11 +698,12 @@ class Ui {
         timeoutMsg: `Text containing "${text}" not visible`,
       },
     );
-    const loc = await el.getLocation();
-    const size = await el.getSize();
+    const r = await this.rect(el);
     this.log(
       'UI',
-      `tapContains "${text}" ${Math.round(size.width)}x${Math.round(size.height)} @ ${Math.round(loc.x)},${Math.round(loc.y)}`,
+      r
+        ? `tapContains "${text}" ${Math.round(r.w)}x${Math.round(r.h)} @ ${Math.round(r.x)},${Math.round(r.y)}`
+        : `tapContains "${text}"`,
     );
     await el.click().catch(() => this.press(el));
   }
@@ -836,20 +866,19 @@ class Ui {
       this.log('UI', 'No XCUIElementTypeKeyboard for accessory Done');
       return false;
     }
-    const loc = await kb.getLocation();
-    const size = await kb.getSize();
-    if (!(size.width > 0) || !(size.height > 40) || size.height > 450) {
+    const r = await this.rect(kb);
+    if (!r || !(r.w > 0) || r.h < 40 || r.h > 450) {
       this.log(
         'UI',
-        `Skip accessory tap — keyboard frame ${Math.round(size.width)}x${Math.round(size.height)}`,
+        `Skip accessory tap — keyboard frame ${r ? `${Math.round(r.w)}x${Math.round(r.h)}` : 'missing'}`,
       );
       return false;
     }
-    const x = Math.round(loc.x + size.width - 48);
-    const yAbove = Math.round(loc.y - 24);
+    const x = Math.round(r.x + r.w - 48);
+    const yAbove = Math.round(r.y - 24);
     this.log(
       'UI',
-      `Tap accessory Done above keyboard ${Math.round(size.width)}x${Math.round(size.height)} @ ${x},${yAbove}`,
+      `Tap accessory Done above keyboard ${Math.round(r.w)}x${Math.round(r.h)} @ ${x},${yAbove}`,
     );
     await this.pressAt(x, yAbove);
     return true;
@@ -912,15 +941,131 @@ class Ui {
     }
   }
 
+  /**
+   * Stay in NATIVE_APP. Nearby Step 3 can leave a WEBVIEW context so
+   * later `home.tile.*` / Button queries return [].
+   */
+  async ensureNativeContext() {
+    try {
+      const current = await browser.getContext();
+      if (current === 'NATIVE_APP') {
+        return;
+      }
+      const contexts = await browser.getContexts();
+      if (contexts.includes('NATIVE_APP')) {
+        await browser.switchContext('NATIVE_APP');
+        this.log('UI', `Context ${current} → NATIVE_APP`);
+      }
+    } catch {
+      // older driver / already native
+    }
+  }
+
+  /**
+   * FlatList / ScrollView in the content band (below the green header).
+   * Screen-level swipe often hits the header, so only "scroll to top" worked.
+   * @returns {Promise<WebdriverIO.Element|null>}
+   */
+  async firstScrollable() {
+    const selectors = this.isAndroid()
+      ? ['android=new UiSelector().scrollable(true)']
+      : [
+          '-ios class chain:**/XCUIElementTypeScrollView',
+          '-ios class chain:**/XCUIElementTypeTable',
+          '-ios class chain:**/XCUIElementTypeCollectionView',
+        ];
+    for (const selector of selectors) {
+      let els = [];
+      try {
+        els = await $$(selector);
+      } catch {
+        els = [];
+      }
+      for (const el of els || []) {
+        const r = await this.rect(el);
+        if (!r) {
+          continue;
+        }
+        if (r.y < 24 || r.h < 80) {
+          continue;
+        }
+        return el;
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Scroll the list container, not the window.
+   * `down` = see rows below (finger up). `up` = back to the top of the list.
+   * @param {'down'|'up'} direction
+   * @returns {Promise<boolean>} true when a list node was used
+   */
+  async scrollList(direction = 'down') {
+    const el = await this.firstScrollable();
+    if (el) {
+      const r = await this.rect(el);
+      if (r && r.h > 80) {
+        const x = Math.round(r.x + r.w / 2);
+        const fromY = Math.round(
+          r.y + r.h * (direction === 'down' ? 0.72 : 0.28),
+        );
+        const toY = Math.round(
+          r.y + r.h * (direction === 'down' ? 0.28 : 0.72),
+        );
+        try {
+          await browser.execute('mobile: dragFromToForDuration', {
+            duration: 0.4,
+            fromX: x,
+            fromY,
+            toX: x,
+            toY,
+          });
+          return true;
+        } catch {
+          try {
+            await browser.execute('mobile: scroll', {
+              element: el.elementId,
+              direction,
+            });
+            return true;
+          } catch {
+            // fall through to screen swipe
+          }
+        }
+      }
+    }
+    if (direction === 'down') {
+      await this.swipeUp();
+    } else {
+      await this.swipeDown();
+    }
+    return false;
+  }
+
   async swipeUp() {
     try {
       await browser.execute('mobile: swipe', {
         direction: 'up',
-        velocity: 400,
+        velocity: 750,
       });
     } catch {
       await browser.execute('mobile: swipeGesture', {
         direction: 'up',
+        percent: 0.75,
+      });
+    }
+  }
+
+  async swipeDown() {
+    try {
+      await browser.execute('mobile: swipe', {
+        direction: 'down',
+        velocity: 750,
+      });
+    } catch {
+      await browser.execute('mobile: swipeGesture', {
+        direction: 'down',
         percent: 0.75,
       });
     }
