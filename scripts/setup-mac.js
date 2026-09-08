@@ -27,13 +27,14 @@ const {
   listProjects,
 } = require('./lib/detect');
 const { writeProjectEnv } = require('./lib/env');
+const { askScriptLanguage } = require('./lib/language');
 
 /**
  * Parse simple CLI flags.
  * @param {string[]} argv
  */
 function parseArgs(argv) {
-  /** @type {{ project?: string, skipTools?: boolean, yes?: boolean }} */
+  /** @type {{ project?: string, skipTools?: boolean, yes?: boolean, language?: string }} */
   const opts = {};
   for (let i = 0; i < argv.length; i += 1) {
     const a = argv[i];
@@ -43,6 +44,8 @@ function parseArgs(argv) {
       opts.skipTools = true;
     } else if (a === '--yes' || a === '-y') {
       opts.yes = true;
+    } else if ((a === '--language' || a === '--lang') && argv[i + 1]) {
+      opts.language = String(argv[++i]).toLowerCase();
     }
   }
   return opts;
@@ -100,14 +103,14 @@ async function resolveProject(preferred) {
 
   if (action.startsWith('Create')) {
     const { createProject } = require('./new-project');
-    const id = await createProject({});
+    const id = await createProject({ skipLanguageAsk: true, skipInstall: true });
     return id;
   }
 
   if (!projects.length) {
     console.log('No projects found. Creating one from template…');
     const { createProject } = require('./new-project');
-    return createProject({});
+    return createProject({ skipLanguageAsk: true, skipInstall: true });
   }
 
   return askChoice('Select project', projects);
@@ -116,8 +119,9 @@ async function resolveProject(preferred) {
 /**
  * Collect device + credential values for .env.
  * @param {string} projectId
+ * @param {{ scriptLanguage?: string }} [extra]
  */
-async function collectEnvUpdates(projectId) {
+async function collectEnvUpdates(projectId, extra = {}) {
   const pDir = projectDir(projectId);
   const configPath = path.join(pDir, 'project.config.js');
   /** @type {{ defaults?: { ios?: { bundleId?: string }, android?: { appPackage?: string } } }} */
@@ -142,6 +146,7 @@ async function collectEnvUpdates(projectId) {
 
   /** @type {Record<string, string>} */
   const updates = {
+    AUTOMATION_SCRIPT_LANGUAGE: extra.scriptLanguage || 'javascript',
     APPIUM_HOST: '127.0.0.1',
     APPIUM_PORT: '4723',
     APPIUM_SHOW_XCODE_LOG: 'true',
@@ -332,6 +337,20 @@ async function main() {
     }
   }
 
+  // Language first — so PM/engineer confirms JS vs Python before tooling.
+  let scriptLanguage = 'javascript';
+  if (opts.language === 'javascript' || opts.language === 'js') {
+    scriptLanguage = 'javascript';
+    console.log('\nScript language: JavaScript (--language flag)');
+  } else if (opts.language === 'python' || opts.language === 'py') {
+    scriptLanguage = await askScriptLanguage({});
+  } else if (opts.yes) {
+    scriptLanguage = 'javascript';
+    console.log('\nScript language: JavaScript (default with --yes)');
+  } else {
+    scriptLanguage = await askScriptLanguage({});
+  }
+
   if (!opts.skipTools) {
     const doTools = opts.yes
       ? true
@@ -340,12 +359,13 @@ async function main() {
   }
 
   const projectId = await resolveProject(opts.project);
-  const updates = await collectEnvUpdates(projectId);
+  const updates = await collectEnvUpdates(projectId, { scriptLanguage });
   const envPath = writeProjectEnv({
     projectPath: projectDir(projectId),
     updates,
   });
   console.log(`\nWrote ${envPath}`);
+  console.log(`Script language recorded: ${scriptLanguage}`);
 
   const doInstall = opts.yes
     ? true

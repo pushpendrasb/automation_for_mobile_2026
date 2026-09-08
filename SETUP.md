@@ -23,7 +23,7 @@ What it does:
 1. Installs **Homebrew** if missing  
 2. Installs **Node.js ≥ 18** if missing  
 3. Installs **Appium** + **XCUITest** + **UiAutomator2**  
-4. Asks a few questions (project, platform, device, Team ID, credentials)  
+4. Asks a few questions (**script language**, project, platform, device, Team ID, credentials)  
 5. Writes **this Mac’s** `.env` (never reuses another person’s UDID/Team ID)  
 6. Runs `npm install` in the project  
 
@@ -47,12 +47,16 @@ bash scripts/bootstrap.sh
 
 ## Questions the wizard asks
 
-1. Install/verify Appium drivers?  
-2. Configure existing project **or** create new  
-3. Platform: iOS / Android / Both  
-4. Device (auto-listed) + **Apple Team ID** (iOS real device)  
-5. Bundle / package (defaults from `project.config.js`)  
-6. Test credentials (optional)  
+1. **Which language** do you want to write scripts in? (JavaScript recommended / Python noted but not scaffolded yet)  
+2. Install/verify Appium drivers?  
+3. Configure existing project **or** create new  
+4. Platform: iOS / Android / Both  
+5. Device (auto-listed) + **Apple Team ID** (iOS real device)  
+6. Bundle / package (defaults from `project.config.js`)  
+7. Test credentials (optional)  
+
+Choice is saved as `AUTOMATION_SCRIPT_LANGUAGE` in `.env`.  
+This repo’s framework runs **JavaScript (WebdriverIO)** today — if you pick Python, the wizard explains that and offers to continue with JS.
 
 Everything else is filled automatically (`ie.vetpal`, Appium host/port, signing identity, etc.).
 
@@ -103,5 +107,6 @@ After cloning the repo, paste:
 ```bash
 node scripts/setup-mac.js --project vetpal
 node scripts/setup-mac.js --project vetpal --skip-tools
+node scripts/setup-mac.js --language javascript
 node scripts/new-project.js --id myapp --name "My App" --bundle com.example.myapp
 ```

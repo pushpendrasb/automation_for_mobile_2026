@@ -12,6 +12,7 @@ const path = require('path');
 const { spawnSync } = require('child_process');
 
 const { ask, askYesNo } = require('./lib/prompt');
+const { askScriptLanguage } = require('./lib/language');
 const { repoRoot, projectDir, listProjects } = require('./lib/detect');
 
 /**
@@ -108,8 +109,18 @@ function replacePlaceholders(dest, map) {
  * @param {{ id?: string, name?: string, bundle?: string, skipInstall?: boolean }} opts
  * @returns {Promise<string>} project id
  */
+/**
+ * Create a new project interactively or from CLI opts.
+ * @param {{ id?: string, name?: string, bundle?: string, skipInstall?: boolean, skipLanguageAsk?: boolean }} opts
+ * @returns {Promise<string>} project id
+ */
 async function createProject(opts = {}) {
   console.log('\n=== New project ===');
+  // Confirm language before scaffolding (template is JavaScript / WebdriverIO).
+  if (!opts.skipLanguageAsk) {
+    await askScriptLanguage({});
+  }
+
   const existing = new Set(listProjects());
 
   let id = opts.id || (await ask('Project folder id (e.g. myapp)', 'myapp'));
