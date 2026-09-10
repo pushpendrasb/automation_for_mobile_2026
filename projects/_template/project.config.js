@@ -22,6 +22,6 @@ module.exports = {
 
   defaults: {
     ios: { bundleId: '__BUNDLE_ID__' },
-    android: { appPackage: '__BUNDLE_ID__' },
+    android: { appPackage: '__ANDROID_PACKAGE__' },
   },
 };

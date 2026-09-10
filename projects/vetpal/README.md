@@ -32,7 +32,7 @@ Edit `.env` (use **this Mac’s** device — do not copy another person’s UDID
 | `VETPAL_TEST_MOBILE` | test mobile |
 | `VETPAL_TEST_PASSWORD` | test password |
 | `IOS_DEVICE_UDID` | from `xcrun xctrace list devices` |
-| `IOS_TEAM_ID` | Xcode → Accounts → Team ID |
+| `IOS_TEAM_ID` | Apple **Team ID** (10 chars) from developer.apple.com → Membership details — not Xcode “Manage” |
 | `IOS_BUNDLE_ID` | `ie.vetpal` |
 | `ANDROID_APP_PACKAGE` | `ie.vetpal` |
 

@@ -1,0 +1,17 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "Node16",
+    "moduleResolution": "Node16",
+    "lib": ["ES2022"],
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "noEmit": true,
+    "rootDir": ".",
+    "ignoreDeprecations": "6.0"
+  },
+  "include": ["tests/**/*.ts", "pages/**/*.ts", "catalog/**/*.ts", "types/**/*.d.ts"],
+  "exclude": ["node_modules", "reports", "screenshots"]
+}

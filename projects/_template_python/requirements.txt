@@ -1,0 +1,5 @@
+# __PROJECT_NAME__ — Python Appium automation
+Appium-Python-Client>=4.0.0,<5
+pytest>=8.0.0,<9
+python-dotenv>=1.0.0,<2
+PyYAML>=6.0.0,<7

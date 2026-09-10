@@ -11,6 +11,7 @@ const path = require('path');
 const fs = require('fs');
 const { createTestReport } = require('../utils/testReport');
 const { buildPlatformMeta, fromSessionCaps } = require('../utils/deviceInfo');
+const { friendlyErrorMessage } = require('../utils/friendlyError');
 
 /**
  * @param {'iOS'|'Android'} platformName
@@ -133,14 +134,14 @@ function buildReporterHooks(platformName, project) {
         try {
           await browser.saveScreenshot(filePath);
           screenshot = filePath;
-          console.log(`Failure reason: ${error && error.message}`);
+          console.log(`Failure reason: ${friendlyErrorMessage(error)}`);
           console.log(`Screenshot path: ${filePath}`);
           console.log(
             `Device/platform: ${platformName} | app=${appId || 'n/a'}`,
           );
         } catch (shotError) {
           console.log(`Could not capture screenshot: ${shotError.message}`);
-          console.log(`Failure reason: ${error && error.message}`);
+          console.log(`Failure reason: ${friendlyErrorMessage(error)}`);
         }
       }
 

@@ -6,16 +6,43 @@
 const { execSync } = require('child_process');
 const path = require('path');
 const fs = require('fs');
+const { createRequire } = require('module');
+
+/**
+ * Resolve dotenv from the project (peer dep), not from framework/.
+ * Running this file with node does not see projects/<name>/node_modules by default.
+ * @param {string} projectRoot
+ */
+function loadDotenv(projectRoot) {
+  const absRoot = path.resolve(projectRoot);
+  try {
+    return createRequire(path.join(absRoot, 'package.json'))('dotenv');
+  } catch {
+    try {
+      return require('dotenv');
+    } catch {
+      return null;
+    }
+  }
+}
 
 function loadProjectEnv() {
   const projectRoot =
     process.env.AUTOMATION_PROJECT_ROOT ||
     process.argv[3] ||
     process.cwd();
-  const envPath = path.join(projectRoot, '.env');
-  if (fs.existsSync(envPath)) {
-    require('dotenv').config({ path: envPath });
+  const envPath = path.join(path.resolve(projectRoot), '.env');
+  if (!fs.existsSync(envPath)) {
+    return;
   }
+  const dotenv = loadDotenv(projectRoot);
+  if (!dotenv) {
+    console.warn(
+      'dotenv not found in the project — run npm install, then retry. Skipping .env load.',
+    );
+    return;
+  }
+  dotenv.config({ path: envPath });
 }
 
 function run(cmd) {

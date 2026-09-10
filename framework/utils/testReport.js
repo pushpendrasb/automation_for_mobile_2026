@@ -10,6 +10,7 @@
 const fs = require('fs');
 const path = require('path');
 const { buildStrongHtml, escapeHtml } = require('./strongHtmlReport');
+const { friendlyErrorMessage, rawErrorText } = require('./friendlyError');
 
 const HISTORY_LIMIT = 8;
 
@@ -18,7 +19,13 @@ const HISTORY_LIMIT = 8;
  * @param {{ displayName: string, reportBaseName: string, reportsDir?: string }} projectMeta
  */
 function createTestReport(catalog, projectMeta) {
-  const { ALL_TEST_CASES, findCaseByTitle } = catalog;
+  const ALL_TEST_CASES = Array.isArray(catalog && catalog.ALL_TEST_CASES)
+    ? catalog.ALL_TEST_CASES
+    : [];
+  const findCaseByTitle =
+    typeof (catalog && catalog.findCaseByTitle) === 'function'
+      ? catalog.findCaseByTitle
+      : () => null;
   const displayName = projectMeta.displayName || 'Mobile App';
   const reportBaseName = projectMeta.reportBaseName || 'automation-report';
   const reportsDir = projectMeta.reportsDir || '';
@@ -118,7 +125,12 @@ function createTestReport(catalog, projectMeta) {
       steps: extra.steps || caseDef.steps || [],
       status: outcome.passed ? 'PASS' : 'FAIL',
       durationMs: outcome.duration || 0,
-      error: outcome.error ? String(outcome.error.message || outcome.error) : null,
+      error: outcome.passed
+        ? null
+        : friendlyErrorMessage(outcome.error),
+      errorTechnical: outcome.passed
+        ? null
+        : rawErrorText(outcome.error) || null,
       screenshot: extra.screenshot || null,
       finishedAt: new Date().toISOString(),
     };
@@ -165,7 +177,7 @@ function createTestReport(catalog, projectMeta) {
           <td><code>${escapeHtml(c.caseId)}</code></td>
           <td>${escapeHtml(c.type)}</td>
           <td><strong>${escapeHtml(c.title)}</strong><br/><span class="muted">${escapeHtml(c.understanding)}</span></td>
-          <td><ol>${c.steps.map(s => `<li>${escapeHtml(s)}</li>`).join('')}</ol></td>
+          <td><ol>${(Array.isArray(c.steps) ? c.steps : []).map(s => `<li>${escapeHtml(s)}</li>`).join('')}</ol></td>
           <td>${escapeHtml(c.expected)}</td>
           <td class="pass-hint">${escapeHtml(c.passWhen)}</td>
           <td class="fail-hint">${escapeHtml(c.failWhen)}</td>
@@ -229,36 +241,13 @@ ${sharedStyles()}
   }
 
   /**
-   * Catalog cases that were not executed are appended as SKIP so the
-   * report still shows the full planned suite.
+   * Previously appended catalog cases as SKIP so the HTML showed the full plan.
+   * Product feedback: the run report should only list scripts that actually ran.
+   * Catalog HTML (`test-catalog.html`) still lists every planned case.
    * @param {Array<Record<string, unknown>>} executed
    */
   function withSkippedCatalog(executed) {
-    const seen = new Set(
-      executed.map(t => String(t.caseId || t.title).toLowerCase()),
-    );
-    const skipped = ALL_TEST_CASES.filter(c => {
-      const id = String(c.caseId || '').toLowerCase();
-      const title = String(c.title || '').toLowerCase();
-      return !seen.has(id) && ![...seen].some(s => s.includes(id) || s.includes(title.slice(0, 20)));
-    }).map(c => ({
-      caseId: c.caseId,
-      module: c.module,
-      type: c.type,
-      suite: '',
-      title: `${c.caseId}: ${c.title}`,
-      understanding: c.understanding,
-      expected: c.expected,
-      passWhen: c.passWhen,
-      failWhen: c.failWhen,
-      steps: c.steps || [],
-      status: 'SKIP',
-      durationMs: 0,
-      error: null,
-      screenshot: null,
-      finishedAt: null,
-    }));
-    return [...executed, ...skipped];
+    return Array.isArray(executed) ? executed : [];
   }
 
   /**
@@ -301,19 +290,20 @@ ${sharedStyles()}
     const diskMeta = readJson(path.join(dir, `.${reportBaseName}-meta.json`), {});
     const diskResults = readJsonl(path.join(dir, `.${reportBaseName}-results.jsonl`));
     const executed = diskResults.length ? diskResults : results;
+    /** Only scripts that ran this time (PASS / FAIL / mocha skip) — not the full catalog. */
     const tests = withSkippedCatalog(executed);
 
-    const passed = executed.filter(r => r.status === 'PASS').length;
-    const failed = executed.filter(r => r.status === 'FAIL').length;
+    const passed = tests.filter(r => r.status === 'PASS').length;
+    const failed = tests.filter(r => r.status === 'FAIL').length;
     const skipped = tests.filter(r => r.status === 'SKIP').length;
     const total = tests.length;
     const startedAt = diskMeta.startedAt || suiteStartedAt;
-    const summedMs = executed.reduce(
+    const summedMs = tests.reduce(
       (sum, row) => sum + (Number(row.durationMs) || 0),
       0,
     );
     const durationMs = Math.max(Date.now() - startedAt, summedMs);
-    const lastFinished = executed
+    const lastFinished = tests
       .map(row => row.finishedAt)
       .filter(Boolean)
       .pop();
@@ -331,7 +321,7 @@ ${sharedStyles()}
       platform,
       summary: { total, passed, failed, skipped, durationMs, passRate },
       understanding:
-        'PASS = app behaved as expected. FAIL = missing screen, wrong toast, API reject, device/WDA issue, or flow stopped early.',
+        'This report lists only scripts that ran in this session. PASS = expected behaviour. FAIL = something went wrong (see plain-English error under each case). Full planned cases are in test-catalog.html.',
       tests,
       catalogCases: ALL_TEST_CASES,
       catalogCount: ALL_TEST_CASES.length,

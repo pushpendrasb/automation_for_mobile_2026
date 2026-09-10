@@ -11,7 +11,6 @@
  */
 const fs = require('fs');
 const path = require('path');
-const { spawnSync } = require('child_process');
 
 const { ask, askChoice, askYesNo } = require('./lib/prompt');
 const {
@@ -27,7 +26,19 @@ const {
   listProjects,
 } = require('./lib/detect');
 const { writeProjectEnv } = require('./lib/env');
-const { askScriptLanguage } = require('./lib/language');
+const {
+  askScriptLanguage,
+  normalizeLanguage,
+  languageLabel,
+} = require('./lib/language');
+const {
+  installForLanguage,
+  firstTestCommand,
+  deviceCheckCommand,
+  detectProjectLanguage,
+} = require('./lib/installLanguage');
+const { askPlatformAndAppIds } = require('./lib/platformIds');
+const { buildAndInstallWda, needsWdaSetup } = require('./lib/wdaSetup');
 
 /**
  * Parse simple CLI flags.
@@ -81,10 +92,55 @@ function installAppiumStack() {
 }
 
 /**
+ * Read default bundle id from JS project.config.js or Python project_config.py.
+ * @param {string} pDir
+ * @returns {{ bundle: string, packageName: string }}
+ */
+function readDefaultIds(pDir) {
+  const configPath = path.join(pDir, 'project.config.js');
+  try {
+    delete require.cache[require.resolve(configPath)];
+    const config = require(configPath);
+    const bundle = config.defaults?.ios?.bundleId || 'com.example.app';
+    const packageName = config.defaults?.android?.appPackage || bundle;
+    return { bundle, packageName };
+  } catch {
+    // Python template
+  }
+
+  const pyPath = path.join(pDir, 'project_config.py');
+  if (fs.existsSync(pyPath)) {
+    const text = fs.readFileSync(pyPath, 'utf8');
+    const m = text.match(/BUNDLE_ID\s*=\s*["']([^"']+)["']/);
+    if (m) {
+      return { bundle: m[1], packageName: m[1] };
+    }
+  }
+
+  const envExample = path.join(pDir, '.env.example');
+  if (fs.existsSync(envExample)) {
+    const text = fs.readFileSync(envExample, 'utf8');
+    const m = text.match(/^IOS_BUNDLE_ID=(.+)$/m);
+    if (m && m[1].trim() && !m[1].includes('__')) {
+      return { bundle: m[1].trim(), packageName: m[1].trim() };
+    }
+  }
+
+  return { bundle: 'com.example.app', packageName: 'com.example.app' };
+}
+
+/**
  * Pick or create a project folder under projects/.
  * @param {string|undefined} preferred
+ * @param {import('./lib/language').ScriptLanguage} scriptLanguage
+ * @returns {Promise<{
+ *   projectId: string,
+ *   platform?: import('./lib/platformIds').TargetPlatform,
+ *   iosBundleId?: string,
+ *   androidPackage?: string,
+ * }>}
  */
-async function resolveProject(preferred) {
+async function resolveProject(preferred, scriptLanguage) {
   const projects = listProjects();
   if (preferred) {
     const p = projectDir(preferred);
@@ -92,57 +148,86 @@ async function resolveProject(preferred) {
       console.error(`Project not found: ${preferred}`);
       process.exit(1);
     }
-    return preferred;
+    return { projectId: preferred };
   }
 
   console.log('\n=== Project ===');
   const action = await askChoice('What do you want to do?', [
-    'Configure an existing project (.env + npm install)',
+    'Configure an existing project (.env + install deps)',
     'Create a new project from template, then configure it',
   ]);
 
   if (action.startsWith('Create')) {
     const { createProject } = require('./new-project');
-    const id = await createProject({ skipLanguageAsk: true, skipInstall: true });
-    return id;
+    const created = await createProject({
+      skipLanguageAsk: true,
+      skipInstall: true,
+      scriptLanguage,
+    });
+    return {
+      projectId: created.id,
+      platform: created.platform,
+      iosBundleId: created.iosBundleId,
+      androidPackage: created.androidPackage,
+    };
   }
 
   if (!projects.length) {
     console.log('No projects found. Creating one from template…');
     const { createProject } = require('./new-project');
-    return createProject({ skipLanguageAsk: true, skipInstall: true });
+    const created = await createProject({
+      skipLanguageAsk: true,
+      skipInstall: true,
+      scriptLanguage,
+    });
+    return {
+      projectId: created.id,
+      platform: created.platform,
+      iosBundleId: created.iosBundleId,
+      androidPackage: created.androidPackage,
+    };
   }
 
-  return askChoice('Select project', projects);
+  const projectId = await askChoice('Select project', projects);
+  return { projectId };
 }
 
 /**
  * Collect device + credential values for .env.
  * @param {string} projectId
- * @param {{ scriptLanguage?: string }} [extra]
+ * @param {{
+ *   scriptLanguage?: string,
+ *   platform?: import('./lib/platformIds').TargetPlatform,
+ *   iosBundleId?: string,
+ *   androidPackage?: string,
+ * }} [extra]
  */
 async function collectEnvUpdates(projectId, extra = {}) {
   const pDir = projectDir(projectId);
-  const configPath = path.join(pDir, 'project.config.js');
-  /** @type {{ defaults?: { ios?: { bundleId?: string }, android?: { appPackage?: string } } }} */
-  let config = {};
-  try {
-    // Fresh require each time
-    delete require.cache[require.resolve(configPath)];
-    config = require(configPath);
-  } catch {
-    config = {};
-  }
+  const { bundle: defaultBundle, packageName: defaultPackage } =
+    readDefaultIds(pDir);
 
-  const defaultBundle = config.defaults?.ios?.bundleId || 'com.example.app';
-  const defaultPackage = config.defaults?.android?.appPackage || defaultBundle;
+  // Platform first, then only the matching app id fields.
+  // If create-project already asked, reuse those answers (do not ask again).
+  const alreadyAsked = Boolean(
+    extra.platform && (extra.iosBundleId || extra.androidPackage),
+  );
+  const ids = alreadyAsked
+    ? {
+        platform: /** @type {import('./lib/platformIds').TargetPlatform} */ (
+          extra.platform
+        ),
+        iosBundleId: extra.iosBundleId || defaultBundle,
+        androidPackage: extra.androidPackage || defaultPackage || defaultBundle,
+      }
+    : await askPlatformAndAppIds(projectId, {
+        platform: extra.platform,
+        iosBundleId: extra.iosBundleId || defaultBundle,
+        androidPackage: extra.androidPackage || defaultPackage || defaultBundle,
+        defaultBundle,
+      });
 
-  console.log('\n=== Platforms ===');
-  const platform = await askChoice('Which platform(s) will you run?', [
-    'iOS',
-    'Android',
-    'Both',
-  ]);
+  const platform = ids.platform;
 
   /** @type {Record<string, string>} */
   const updates = {
@@ -150,8 +235,8 @@ async function collectEnvUpdates(projectId, extra = {}) {
     APPIUM_HOST: '127.0.0.1',
     APPIUM_PORT: '4723',
     APPIUM_SHOW_XCODE_LOG: 'true',
-    IOS_BUNDLE_ID: defaultBundle,
-    ANDROID_APP_PACKAGE: defaultPackage,
+    IOS_BUNDLE_ID: ids.iosBundleId,
+    ANDROID_APP_PACKAGE: ids.androidPackage,
     IOS_XCODE_SIGNING_ID: 'Apple Development',
     IOS_APP_PATH: '',
     ANDROID_APP_PATH: '',
@@ -160,6 +245,11 @@ async function collectEnvUpdates(projectId, extra = {}) {
     IOS_PLATFORM_VERSION: '18.0',
     IOS_REAL_PLATFORM_VERSION: '',
   };
+
+  if (extra.scriptLanguage === 'python') {
+    updates.PYTEST_PLATFORM =
+      platform === 'Android' ? 'android' : 'ios';
+  }
 
   if (platform === 'iOS' || platform === 'Both') {
     console.log('\n=== iOS device ===');
@@ -188,25 +278,42 @@ async function collectEnvUpdates(projectId, extra = {}) {
     }
 
     if (updates.IOS_DEVICE_UDID) {
-      console.log(
-        '\n  Tip: Xcode → Settings → Accounts → Team → copy Team ID (10 chars).',
-      );
-      updates.IOS_TEAM_ID = await ask('Apple Team ID (required for real device WDA)');
+      console.log(`
+  Apple Team ID (required for real-device tests)
+  ---------------------------------------------
+  Xcode → Settings → Accounts does NOT show a field named "Membership ID".
+
+  Easiest place to copy it (what you already found):
+    1. Open https://developer.apple.com/account
+    2. Sign in with the same Apple ID used in Xcode
+    3. Membership details → copy Team ID (10 characters, e.g. AB12CD34EF)
+
+  Also OK:
+    • Apple Developer app / portal → Membership → Team ID
+    • Or ask your Apple Developer Admin for the Team ID for "Smooglei Ltd"
+
+  Paste that Team ID below (not the membership expiry date / not your email).
+`);
+      updates.IOS_TEAM_ID = await ask('Apple Team ID (10 characters)');
       if (!updates.IOS_TEAM_ID) {
         console.warn(
-          '  Warning: empty IOS_TEAM_ID usually causes “membership / signing” WDA failures.',
+          '  Warning: empty IOS_TEAM_ID usually causes WebDriverAgent signing failures on a real iPhone.',
+        );
+      } else if (!/^[A-Z0-9]{10}$/i.test(String(updates.IOS_TEAM_ID).trim())) {
+        console.warn(
+          '  Warning: Team ID is usually exactly 10 letters/numbers. Double-check developer.apple.com → Membership details.',
         );
       }
     } else {
       updates.IOS_TEAM_ID = await ask('Apple Team ID (optional for simulator)', '');
     }
 
-    const bundle = await ask('iOS bundle ID', defaultBundle);
-    updates.IOS_BUNDLE_ID = bundle;
-    updates.ANDROID_APP_PACKAGE = defaultPackage || bundle;
+    if (!alreadyAsked) {
+      // IDs already collected above via askPlatformAndAppIds
+    }
 
     const appInstalled = await askYesNo(
-      `Is the app already installed on the device as ${updates.IOS_BUNDLE_ID}?`,
+      `Is the iOS app already installed on the device as ${updates.IOS_BUNDLE_ID}?`,
       true,
     );
     if (!appInstalled) {
@@ -234,17 +341,13 @@ async function collectEnvUpdates(projectId, extra = {}) {
       updates.ANDROID_DEVICE_ID = await ask('Android device serial (optional)', '');
     }
 
-    updates.ANDROID_APP_PACKAGE = await ask(
-      'Android app package',
-      updates.ANDROID_APP_PACKAGE || defaultPackage,
-    );
     updates.ANDROID_APP_ACTIVITY = await ask(
       'Android app activity (blank = wait for any)',
       '',
     );
 
     const apkInstalled = await askYesNo(
-      `Is the app already installed as ${updates.ANDROID_APP_PACKAGE}?`,
+      `Is the Android app already installed as ${updates.ANDROID_APP_PACKAGE}?`,
       true,
     );
     if (!apkInstalled) {
@@ -273,28 +376,21 @@ async function collectEnvUpdates(projectId, extra = {}) {
 }
 
 /**
- * npm install inside the project folder.
- * @param {string} projectId
- */
-function npmInstallProject(projectId) {
-  const cwd = projectDir(projectId);
-  console.log(`\n=== npm install (${projectId}) ===`);
-  const result = spawnSync('npm', ['install'], { cwd, stdio: 'inherit' });
-  if (result.status !== 0) {
-    console.error('npm install failed. Fix errors, then re-run setup.');
-    process.exit(1);
-  }
-}
-
-/**
  * Print next steps after setup.
  * @param {string} projectId
+ * @param {import('./lib/language').ScriptLanguage} scriptLanguage
  */
-function printNextSteps(projectId) {
+function printNextSteps(projectId, scriptLanguage) {
   const pDir = projectDir(projectId);
+  const detected = detectProjectLanguage(pDir);
+  const lang =
+    detected === 'unknown' ? scriptLanguage : /** @type {typeof scriptLanguage} */ (detected);
+  const testCmd = firstTestCommand(pDir, lang);
+  const checkCmd = deviceCheckCommand(pDir, lang);
   console.log(`
 ========================================
 Setup complete for: ${projectId}
+Language: ${languageLabel(lang)}
 ========================================
 
 Next steps:
@@ -304,11 +400,12 @@ Next steps:
 
   2. In another terminal:
        cd ${pDir}
-       npm run check:devices:ios      # or :android
-       npm run test:ios:signin        # adjust script for your project
+       ${checkCmd}
+       ${testCmd}
 
-  3. If iOS WDA fails with signing / "membership":
-       - Confirm IOS_TEAM_ID in .env matches Xcode → Accounts → Team
+  3. If iOS fails with signing / WebDriverAgent:
+       - Re-run setup so it can rebuild WDA, or fix Team ID / Development cert first
+       - IOS_TEAM_ID must match the team that can sign apps on this Mac
        - Trust this Mac on the phone + Developer Mode ON
        - Xcode → Settings → Accounts → Download Manual Profiles
 
@@ -337,13 +434,19 @@ async function main() {
     }
   }
 
-  // Language first — so PM/engineer confirms JS vs Python before tooling.
+  // Language first — scaffolds JS / TS / Python templates accordingly.
+  /** @type {import('./lib/language').ScriptLanguage} */
   let scriptLanguage = 'javascript';
-  if (opts.language === 'javascript' || opts.language === 'js') {
-    scriptLanguage = 'javascript';
-    console.log('\nScript language: JavaScript (--language flag)');
-  } else if (opts.language === 'python' || opts.language === 'py') {
-    scriptLanguage = await askScriptLanguage({});
+  if (opts.language) {
+    const normalized = normalizeLanguage(opts.language);
+    if (!normalized) {
+      console.error(
+        `Unknown --language ${opts.language}. Use javascript, typescript, or python.`,
+      );
+      process.exit(1);
+    }
+    scriptLanguage = normalized;
+    console.log(`\nScript language: ${languageLabel(scriptLanguage)} (--language flag)`);
   } else if (opts.yes) {
     scriptLanguage = 'javascript';
     console.log('\nScript language: JavaScript (default with --yes)');
@@ -358,21 +461,89 @@ async function main() {
     if (doTools) installAppiumStack();
   }
 
-  const projectId = await resolveProject(opts.project);
-  const updates = await collectEnvUpdates(projectId, { scriptLanguage });
+  const resolved = await resolveProject(opts.project, scriptLanguage);
+  const projectId = resolved.projectId;
+  const pDir = projectDir(projectId);
+  const detected = detectProjectLanguage(pDir);
+  if (
+    detected !== 'unknown' &&
+    detected !== scriptLanguage &&
+    opts.project
+  ) {
+    console.log(
+      `\nNote: projects/${projectId} looks like ${detected}; ` +
+        `installing that stack (your language choice was ${scriptLanguage}).`,
+    );
+  }
+  const effectiveLanguage =
+    detected === 'unknown' ? scriptLanguage : /** @type {typeof scriptLanguage} */ (detected);
+
+  const updates = await collectEnvUpdates(projectId, {
+    scriptLanguage: effectiveLanguage,
+    platform: resolved.platform,
+    iosBundleId: resolved.iosBundleId,
+    androidPackage: resolved.androidPackage,
+  });
+
+  // Real iPhone: build+install WebDriverAgent DURING setup (before first test).
+  if (isMac() && needsWdaSetup(updates)) {
+    const doWda = opts.yes
+      ? true
+      : await askYesNo(
+          'Prepare WebDriverAgent on this iPhone now? (needed before the first test)',
+          true,
+        );
+    if (doWda) {
+      const wda = buildAndInstallWda({
+        udid: updates.IOS_DEVICE_UDID,
+        teamId: updates.IOS_TEAM_ID,
+        signingId: updates.IOS_XCODE_SIGNING_ID || 'Apple Development',
+      });
+      if (wda.ok) {
+        updates.IOS_USE_PREBUILT_WDA = 'true';
+        updates.IOS_WDA_DERIVED_DATA_PATH = wda.derivedDataPath || '';
+        updates.IOS_WDA_BUNDLE_ID =
+          wda.wdaBundleId || 'com.facebook.WebDriverAgentRunner';
+      } else {
+        console.error(`\n  ✗ ${wda.error}`);
+        if (wda.logTail) {
+          console.error('\n--- xcodebuild (last lines) ---');
+          console.error(wda.logTail);
+          console.error('--------------------------------\n');
+        }
+        console.error(`
+  Fix, then re-run setup (or only WDA):
+    • Xcode → Settings → Accounts → your Appraisee/Smooglei team
+    • Manage Certificates → Apple Development for Team ${updates.IOS_TEAM_ID}
+    • Download Manual Profiles
+    • Phone: Trust this Mac + Developer Mode ON + unlocked
+    • Then: npm run setup -- --project ${projectId} --skip-tools
+`);
+        const cont = opts.yes
+          ? false
+          : await askYesNo('Continue setup without WDA? (iOS tests will fail until WDA works)', false);
+        if (!cont) {
+          process.exit(1);
+        }
+      }
+    }
+  }
+
   const envPath = writeProjectEnv({
-    projectPath: projectDir(projectId),
+    projectPath: pDir,
     updates,
   });
   console.log(`\nWrote ${envPath}`);
-  console.log(`Script language recorded: ${scriptLanguage}`);
+  console.log(`Script language recorded: ${effectiveLanguage}`);
 
-  const doInstall = opts.yes
-    ? true
-    : await askYesNo(`Run npm install in projects/${projectId}?`, true);
-  if (doInstall) npmInstallProject(projectId);
+  const installPrompt =
+    effectiveLanguage === 'python'
+      ? `Create .venv + pip install in projects/${projectId}?`
+      : `Run npm install in projects/${projectId}?`;
+  const doInstall = opts.yes ? true : await askYesNo(installPrompt, true);
+  if (doInstall) installForLanguage(pDir, effectiveLanguage);
 
-  printNextSteps(projectId);
+  printNextSteps(projectId, effectiveLanguage);
 }
 
 if (require.main === module) {
@@ -382,4 +553,10 @@ if (require.main === module) {
   });
 }
 
-module.exports = { main, installAppiumStack, collectEnvUpdates };
+module.exports = {
+  main,
+  installAppiumStack,
+  collectEnvUpdates,
+  readDefaultIds,
+  buildAndInstallWda: require('./lib/wdaSetup').buildAndInstallWda,
+};

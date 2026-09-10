@@ -258,7 +258,12 @@ function testCard(test, payload) {
   }
 
   const cause = isFail
-    ? `<div class="cause"><span class="causelabel">Error — what happened</span>${escapeHtml(test.error || 'Unknown error')}</div>`
+    ? `<div class="cause"><span class="causelabel">What went wrong (plain English)</span>${escapeHtml(test.error || 'Unknown error')}${
+        test.errorTechnical &&
+        String(test.errorTechnical) !== String(test.error)
+          ? `<details style="margin-top:8px"><summary class="caption">Technical details</summary><pre style="white-space:pre-wrap;font-size:12px;margin:8px 0 0">${escapeHtml(String(test.errorTechnical))}</pre></details>`
+          : ''
+      }</div>`
     : test.understanding
       ? `<p class="caption" style="margin-top:0">${escapeHtml(test.understanding)}</p>`
       : '';
@@ -631,7 +636,7 @@ function buildStrongHtml(payload, opts = {}) {
 
   const skipNote =
     skipped > 0
-      ? `<p class="caption">${skipped} test${skipped === 1 ? '' : 's'} not executed this run — still listed from the catalog as skipped.</p>`
+      ? `<p class="caption">${skipped} test${skipped === 1 ? '' : 's'} were marked skipped by the runner (not from the full catalog).</p>`
       : '';
 
   const orderedTests = sortByCatalog(tests, payload.catalogCases);
@@ -727,7 +732,7 @@ function buildStrongHtml(payload, opts = {}) {
   <section>
     <h2>All test cases</h2>
     ${casesTable}
-    <p class="caption">Every catalog case from this run. PASS / FAIL / SKIP is always visible here — details below are already expanded.</p>
+    <p class="caption">Scripts that ran in this session only (PASS / FAIL). Planned cases that were not run are listed in test-catalog.html, not here as SKIP.</p>
   </section>
 
   <section>

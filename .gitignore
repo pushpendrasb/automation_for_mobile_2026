@@ -2,6 +2,9 @@ node_modules/
 .DS_Store
 .env
 projects/*/.env
+projects/*/.venv/
+projects/*/__pycache__/
+projects/*/.pytest_cache/
 projects/*/reports/*.html
 projects/*/reports/*.json
 projects/*/reports/*.jsonl

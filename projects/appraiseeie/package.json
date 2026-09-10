@@ -1,0 +1,40 @@
+{
+  "name": "appraiseeie-automation",
+  "version": "1.0.0",
+  "private": true,
+  "description": "AppraiseeIE Appium automation (TypeScript pages + tests)",
+  "scripts": {
+    "setup": "node ../../scripts/setup-mac.js --project appraiseeie --skip-tools --language typescript",
+    "test": "npm run test:ios",
+    "test:ios": "wdio run ./wdio.ios.conf.js",
+    "test:android": "wdio run ./wdio.android.conf.js",
+    "test:ios:smoke": "wdio run ./wdio.ios.conf.js --spec ./tests/smoke/launch.smoke.test.ts",
+    "test:android:smoke": "wdio run ./wdio.android.conf.js --spec ./tests/smoke/launch.smoke.test.ts",
+    "check:devices": "AUTOMATION_PROJECT_ROOT=. node ../../framework/utils/checkDevices.js",
+    "check:devices:ios": "AUTOMATION_PROJECT_ROOT=. node ../../framework/utils/checkDevices.js ios",
+    "check:devices:android": "AUTOMATION_PROJECT_ROOT=. node ../../framework/utils/checkDevices.js android",
+    "report:open": "open ./reports/appraiseeie-report.html || xdg-open ./reports/appraiseeie-report.html",
+    "typecheck": "tsc --noEmit"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "@mobile-automation/appium-core": "file:../../framework"
+  },
+  "devDependencies": {
+    "@types/mocha": "^10.0.10",
+    "@types/node": "^22.13.10",
+    "@wdio/cli": "^9.12.0",
+    "@wdio/globals": "^9.12.0",
+    "@wdio/junit-reporter": "^9.12.0",
+    "@wdio/local-runner": "^9.12.0",
+    "@wdio/mocha-framework": "^9.12.0",
+    "@wdio/spec-reporter": "^9.12.0",
+    "dotenv": "^16.4.7",
+    "expect-webdriverio": "^6.0.9",
+    "tsx": "^4.19.3",
+    "typescript": "^5.8.2",
+    "webdriverio": "^9.12.0"
+  }
+}
