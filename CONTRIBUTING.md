@@ -16,8 +16,9 @@
 
 1. Clone the repo and run `bash scripts/bootstrap.sh` (or `npm run setup`).
 2. Work **only** under `projects/<your-app>/` (pages, tests, catalog, project `.env` locally).
-3. Open a **branch + pull request** — do not push shared folders.
-4. If you need a framework/setup change, ask **@pushpendrasb**.
+3. During setup, provide your **app source path / git URL** (`APP_SOURCE_PATH`) so scripts can reference the real app.
+4. Open a **branch + pull request** — do not push shared folders.
+5. If you need a framework/setup change, ask **@pushpendrasb**.
 
 ## For the owner (@pushpendrasb)
 

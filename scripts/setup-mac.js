@@ -38,6 +38,7 @@ const {
   detectProjectLanguage,
 } = require('./lib/installLanguage');
 const { askPlatformAndAppIds } = require('./lib/platformIds');
+const { askAppSourceLinks } = require('./lib/appSource');
 const { buildAndInstallWda, needsWdaSetup } = require('./lib/wdaSetup');
 
 /**
@@ -138,6 +139,8 @@ function readDefaultIds(pDir) {
  *   platform?: import('./lib/platformIds').TargetPlatform,
  *   iosBundleId?: string,
  *   androidPackage?: string,
+ *   appSourcePath?: string,
+ *   appSourceRepoUrl?: string,
  * }>}
  */
 async function resolveProject(preferred, scriptLanguage) {
@@ -169,6 +172,8 @@ async function resolveProject(preferred, scriptLanguage) {
       platform: created.platform,
       iosBundleId: created.iosBundleId,
       androidPackage: created.androidPackage,
+      appSourcePath: created.appSourcePath,
+      appSourceRepoUrl: created.appSourceRepoUrl,
     };
   }
 
@@ -185,6 +190,8 @@ async function resolveProject(preferred, scriptLanguage) {
       platform: created.platform,
       iosBundleId: created.iosBundleId,
       androidPackage: created.androidPackage,
+      appSourcePath: created.appSourcePath,
+      appSourceRepoUrl: created.appSourceRepoUrl,
     };
   }
 
@@ -200,6 +207,8 @@ async function resolveProject(preferred, scriptLanguage) {
  *   platform?: import('./lib/platformIds').TargetPlatform,
  *   iosBundleId?: string,
  *   androidPackage?: string,
+ *   appSourcePath?: string,
+ *   appSourceRepoUrl?: string,
  * }} [extra]
  */
 async function collectEnvUpdates(projectId, extra = {}) {
@@ -372,6 +381,16 @@ async function collectEnvUpdates(projectId, extra = {}) {
     }
   }
 
+  // App source link — used when writing scripts against the real app repo.
+  if (!extra.appSourcePath && !extra.appSourceRepoUrl) {
+    const links = await askAppSourceLinks({});
+    updates.APP_SOURCE_PATH = links.appSourcePath;
+    updates.APP_SOURCE_REPO_URL = links.appSourceRepoUrl;
+  } else {
+    updates.APP_SOURCE_PATH = extra.appSourcePath || '';
+    updates.APP_SOURCE_REPO_URL = extra.appSourceRepoUrl || '';
+  }
+
   return updates;
 }
 
@@ -483,6 +502,8 @@ async function main() {
     platform: resolved.platform,
     iosBundleId: resolved.iosBundleId,
     androidPackage: resolved.androidPackage,
+    appSourcePath: resolved.appSourcePath,
+    appSourceRepoUrl: resolved.appSourceRepoUrl,
   });
 
   // Real iPhone: build+install WebDriverAgent DURING setup (before first test).

@@ -9,19 +9,24 @@ from pathlib import Path
 
 ROOT_DIR = Path(__file__).resolve().parent
 
+
+def env(key: str, default: str = "") -> str:
+    """Read an environment variable with a default."""
+    return os.getenv(key, default).strip()
+
+
 PROJECT_ID = "__PROJECT_ID__"
 DISPLAY_NAME = "__PROJECT_NAME__"
 BUNDLE_ID = "__BUNDLE_ID__"
 ANDROID_PACKAGE = "__ANDROID_PACKAGE__"
 REPORT_BASE = "__REPORT_BASE__"
 
+# Filled from .env during setup (local path / git URL of the app under test)
+APP_SOURCE_PATH = env("APP_SOURCE_PATH")
+APP_SOURCE_REPO_URL = env("APP_SOURCE_REPO_URL")
+
 REPORTS_DIR = ROOT_DIR / "reports"
 SCREENSHOTS_DIR = ROOT_DIR / "screenshots"
-
-
-def env(key: str, default: str = "") -> str:
-    """Read an environment variable with a default."""
-    return os.getenv(key, default).strip()
 
 
 def ios_capabilities() -> dict:

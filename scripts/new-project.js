@@ -25,6 +25,7 @@ const {
   deviceCheckCommand,
 } = require('./lib/installLanguage');
 const { askPlatformAndAppIds } = require('./lib/platformIds');
+const { askAppSourceLinks } = require('./lib/appSource');
 
 /**
  * @param {string[]} argv
@@ -189,6 +190,8 @@ function finalizeTypescriptProject(dest) {
  *   platform: import('./lib/platformIds').TargetPlatform,
  *   iosBundleId: string,
  *   androidPackage: string,
+ *   appSourcePath: string,
+ *   appSourceRepoUrl: string,
  * }>}
  */
 async function createProject(opts = {}) {
@@ -241,6 +244,13 @@ async function createProject(opts = {}) {
     skipFilledPrompts: Boolean(opts.bundle || opts.androidPackage),
   });
 
+  // App source — local path and/or git URL for writing scripts later.
+  const source = await askAppSourceLinks({
+    appSourcePath: opts.appSourcePath,
+    appSourceRepoUrl: opts.appSourceRepoUrl,
+    skipFilledPrompts: Boolean(opts.appSourcePath || opts.appSourceRepoUrl),
+  });
+
   const templateName = templateFolderForLanguage(scriptLanguage);
   const templateDir = path.join(repoRoot(), 'projects', templateName);
   if (!fs.existsSync(templateDir)) {
@@ -263,9 +273,23 @@ async function createProject(opts = {}) {
     REPORT_BASE: `${id}-report`,
   });
 
-  // Real projects use package types after npm install (not bare-template stubs).
-  if (scriptLanguage === 'typescript') {
-    finalizeTypescriptProject(dest);
+  // Seed .env.example / write notes into README is via placeholders; source goes to a starter .env.example keys already present.
+  const envExample = path.join(dest, '.env.example');
+  if (fs.existsSync(envExample)) {
+    let text = fs.readFileSync(envExample, 'utf8');
+    if (source.appSourcePath && text.includes('APP_SOURCE_PATH=')) {
+      text = text.replace(
+        /^APP_SOURCE_PATH=.*$/m,
+        `APP_SOURCE_PATH=${source.appSourcePath}`,
+      );
+    }
+    if (source.appSourceRepoUrl && text.includes('APP_SOURCE_REPO_URL=')) {
+      text = text.replace(
+        /^APP_SOURCE_REPO_URL=.*$/m,
+        `APP_SOURCE_REPO_URL=${source.appSourceRepoUrl}`,
+      );
+    }
+    fs.writeFileSync(envExample, text, 'utf8');
   }
 
   console.log(`\nCreated projects/${id} (${scriptLanguage})`);
@@ -273,7 +297,13 @@ async function createProject(opts = {}) {
   console.log(`  platform: ${ids.platform}`);
   console.log(`  iOS bundle ID: ${ids.iosBundleId}`);
   console.log(`  Android package: ${ids.androidPackage}`);
+  console.log(`  app source: ${source.appSourcePath || '(not set)'}`);
+  console.log(`  app repo: ${source.appSourceRepoUrl || '(not set)'}`);
   console.log(`  template: projects/${templateName}`);
+
+  if (scriptLanguage === 'typescript') {
+    finalizeTypescriptProject(dest);
+  }
 
   const doInstall = opts.skipInstall
     ? false
@@ -292,7 +322,7 @@ async function createProject(opts = {}) {
 
   console.log(`
 Next:
-  1. Replace pages/, tests/, data for your app
+  1. Replace pages/, tests/ using the app at APP_SOURCE_PATH
   2. Run: npm run setup -- --project ${id} --language ${scriptLanguage}
   3. Start appium, then:
        cd projects/${id}
@@ -305,6 +335,8 @@ Next:
     platform: ids.platform,
     iosBundleId: ids.iosBundleId,
     androidPackage: ids.androidPackage,
+    appSourcePath: source.appSourcePath,
+    appSourceRepoUrl: source.appSourceRepoUrl,
   };
 }
 

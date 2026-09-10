@@ -71,10 +71,11 @@ Setup auto-fixes a common WebdriverIO peer conflict (`expect-webdriverio` must b
 2. Install/verify Appium drivers?  
 3. Configure existing project **or** create new (from the language template)  
 4. **Platform first:** iOS / Android / Both  
-5. **Then app ids:** iOS bundle ID and/or Android package (only for platforms you picked)  
-6. Device (auto-listed) + **Apple Team ID** (iOS real device)  
-7. **WebDriverAgent** — build + install on the phone (required before the first iOS test)  
-8. Test credentials (optional)  
+5. **Then app ids:** iOS bundle ID and/or Android package  
+6. **App source link** — local path and/or git URL of the real app (for writing scripts)  
+7. Device (auto-listed) + **Apple Team ID** (iOS real device)  
+8. **WebDriverAgent** — build + install on the phone  
+9. Test credentials (optional)  
 
 Everything else is filled automatically (Appium host/port, signing identity, etc.).
 

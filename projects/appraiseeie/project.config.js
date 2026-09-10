@@ -10,6 +10,11 @@ module.exports = {
   projectId: 'appraiseeie',
   displayName: 'AppraiseeIE',
   rootDir,
+
+  /** Local path to the app under test (from .env APP_SOURCE_PATH). */
+  appSourcePath: process.env.APP_SOURCE_PATH || '',
+  /** Git/GitHub URL of the app under test (from .env APP_SOURCE_REPO_URL). */
+  appSourceRepoUrl: process.env.APP_SOURCE_REPO_URL || '',
   scriptLanguage: 'typescript',
 
   catalogPath: path.join(rootDir, 'catalog', 'testCasesCatalog.js'),
