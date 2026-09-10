@@ -1,0 +1,99 @@
+# Fail PRs when non-owners change shared paths (framework / scripts / templates).
+# Per-app work under projects/<app>/ (except _template*) is allowed for any collaborator.
+
+name: Protect shared paths
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  shared-paths:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check changed files
+        env:
+          # Only this GitHub user may change shared areas in a PR
+          ALLOWED_SHARED_AUTHORS: pushpendrasb
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+        run: |
+          set -euo pipefail
+
+          author="$(echo "$PR_AUTHOR" | tr '[:upper:]' '[:lower:]')"
+          allowed="$(echo "$ALLOWED_SHARED_AUTHORS" | tr '[:upper:]' '[:lower:]')"
+
+          echo "PR author: $author"
+          echo "Allowed for shared paths: $allowed"
+
+          mapfile -t files < <(git diff --name-only "$BASE_SHA...$HEAD_SHA")
+          if [[ ${#files[@]} -eq 0 ]]; then
+            echo "No file changes."
+            exit 0
+          fi
+
+          echo "Changed files:"
+          printf '  %s\n' "${files[@]}"
+
+          shared=()
+          for f in "${files[@]}"; do
+            case "$f" in
+              framework/*|scripts/*|.github/*|SETUP.md|README.md|HANDOFF.md|package.json)
+                shared+=("$f")
+                ;;
+              projects/_template/*|projects/_template_typescript/*|projects/_template_python/*)
+                shared+=("$f")
+                ;;
+            esac
+          done
+
+          if [[ ${#shared[@]} -eq 0 ]]; then
+            echo "OK: only project (or other non-shared) paths changed."
+            exit 0
+          fi
+
+          echo "Shared paths touched:"
+          printf '  %s\n' "${shared[@]}"
+
+          # Allowlist: space/comma-separated GitHub logins
+          ok=0
+          IFS=', ' read -r -a authors <<< "$allowed"
+          for a in "${authors[@]}"; do
+            [[ -z "$a" ]] && continue
+            if [[ "$author" == "$a" ]]; then
+              ok=1
+              break
+            fi
+          done
+
+          if [[ "$ok" -eq 1 ]]; then
+            echo "OK: author is allowed to change shared paths."
+            exit 0
+          fi
+
+          cat <<EOF
+          ERROR: Shared framework/setup files were changed by @$PR_AUTHOR.
+
+          Other developers may only change their own project under:
+            projects/<your-app>/
+
+          These paths require @pushpendrasb permission:
+            framework/
+            scripts/
+            projects/_template*/
+            .github/
+            SETUP.md / README.md / HANDOFF.md / package.json
+
+          Ask the repo owner to make shared changes, or drop those files from this PR.
+          EOF
+          exit 1

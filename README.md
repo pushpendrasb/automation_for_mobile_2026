@@ -2,18 +2,21 @@
 
 Appium + WebdriverIO automation lives **outside** the React Native app repos.
 
+**Collaboration rule:** other developers change **only** `projects/<their-app>/`.  
+`framework/` and `scripts/` are owner-only — see [CONTRIBUTING.md](./CONTRIBUTING.md).
+
 ```text
 automation_for_mobile_2026/
 ├── SETUP.md                # Fresh Mac + new project (start here)
-├── scripts/
-│   ├── bootstrap.sh        # No Node yet? Run this
-│   ├── setup-mac.js        # Appium + .env wizard
-│   └── new-project.js      # Scaffold projects/<id>
-├── framework/              # Shared — same for every JS/TS app
+├── CONTRIBUTING.md         # Who may edit framework vs projects
+├── scripts/                # Owner-only (setup / bootstrap)
+│   ├── bootstrap.sh
+│   ├── setup-mac.js
+│   └── new-project.js
+├── framework/              # Owner-only (shared Appium core)
 └── projects/
-    ├── _template/              # JavaScript (WebdriverIO)
-    ├── _template_typescript/   # TypeScript (WebdriverIO + tsx)
-    ├── _template_python/       # Python (pytest + Appium)
+    ├── _template*/         # Owner-only scaffolds
+    ├── appraiseeie/        # Per-app — that team may edit
     ├── roskids/
     └── vetpal/
 ```

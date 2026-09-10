@@ -1,0 +1,17 @@
+# Shared areas require @pushpendrasb review (enable “Require review from Code Owners” on main).
+# Per-app folders under projects/<app>/ are intentionally NOT listed here so
+# collaborators can open PRs for their own app without blocking on the owner —
+# CI still rejects PRs that touch framework/scripts/templates by non-owners.
+
+/framework/                          @pushpendrasb
+/scripts/                            @pushpendrasb
+/.github/                            @pushpendrasb
+/SETUP.md                            @pushpendrasb
+/README.md                           @pushpendrasb
+/CONTRIBUTING.md                     @pushpendrasb
+/HANDOFF.md                          @pushpendrasb
+/package.json                        @pushpendrasb
+
+/projects/_template/                 @pushpendrasb
+/projects/_template_typescript/      @pushpendrasb
+/projects/_template_python/          @pushpendrasb
