@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Automation Dashboard</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="bg" aria-hidden="true">
+      <div class="bg-orb bg-orb-a"></div>
+      <div class="bg-orb bg-orb-b"></div>
+      <div class="bg-grid"></div>
+    </div>
+
+    <header class="top">
+      <div class="brand">
+        <p class="brand-mark">Mobile Automation</p>
+        <h1>Control Desk</h1>
+        <p class="tagline">Appium · devices · projects · reports · one click</p>
+      </div>
+      <div class="header-actions">
+        <button type="button" class="btn btn-ghost" id="btnTheme" title="Toggle theme">
+          Dark
+        </button>
+        <div class="appium-panel" id="appiumPanel">
+          <div class="appium-status">
+            <span class="dot" id="appiumDot" data-state="unknown"></span>
+            <div>
+              <p class="appium-label">Appium</p>
+              <p class="appium-detail" id="appiumDetail">Checking…</p>
+            </div>
+          </div>
+          <div class="appium-actions">
+            <button type="button" class="btn btn-primary" id="btnAppiumStart">
+              Start Appium
+            </button>
+            <button type="button" class="btn btn-ghost" id="btnAppiumStop">Stop</button>
+            <button type="button" class="btn btn-ghost" id="btnAppiumRefresh">Refresh</button>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <section class="status-strip">
+      <div class="status-card status-card--devices" id="deviceCard">
+        <div class="status-icon" aria-hidden="true">📱</div>
+        <div>
+          <p class="status-label">Devices</p>
+          <p class="status-value" id="deviceSummary">Checking…</p>
+          <p class="status-sub" id="deviceSub"></p>
+          <button type="button" class="btn btn-ghost btn-tiny" id="btnDevicesRefresh">
+            Refresh devices
+          </button>
+        </div>
+      </div>
+      <div class="status-card status-card--run" id="summaryCard">
+        <div class="status-icon" aria-hidden="true">⚡</div>
+        <div>
+          <p class="status-label">Last run</p>
+          <p class="status-value" id="summaryValue">—</p>
+          <p class="status-sub" id="summarySub">No runs yet</p>
+          <a
+            class="btn btn-primary btn-tiny"
+            id="btnSummaryReport"
+            href="#"
+            target="_blank"
+            rel="noopener"
+            hidden
+            >View report</a
+          >
+        </div>
+      </div>
+      <div class="status-card status-card--queue" id="queueCard">
+        <div class="status-icon" aria-hidden="true">☰</div>
+        <div>
+          <p class="status-label">Queue</p>
+          <p class="status-value" id="queueValue">0 waiting</p>
+          <p class="status-sub" id="queueSub">Idle</p>
+        </div>
+      </div>
+    </section>
+
+    <main class="layout">
+      <section class="panel projects-panel full-bleed">
+        <div class="panel-head row">
+          <div>
+            <h2>Projects</h2>
+            <p>Pick an app — full workspace</p>
+          </div>
+        </div>
+        <div class="project-grid" id="projectGrid">
+          <p class="muted">Loading projects…</p>
+        </div>
+      </section>
+
+      <section class="panel scripts-panel full-bleed" id="scriptsPanel" hidden>
+        <div class="panel-head row">
+          <div>
+            <p class="eyebrow" id="projectEyebrow">Project</p>
+            <h2 id="projectTitle">Scripts</h2>
+            <p id="projectMeta" class="muted"></p>
+          </div>
+          <button type="button" class="btn btn-ghost" id="btnBack">← All projects</button>
+        </div>
+
+        <div class="env-banner" id="envBanner" hidden></div>
+
+        <div class="suite-block" id="suiteBlock" hidden>
+          <h3 class="section-label">One-click suites</h3>
+          <div class="suite-list" id="suiteList"></div>
+        </div>
+
+        <div class="multi-bar">
+          <label class="check-all">
+            <input type="checkbox" id="chkSelectAll" /> Select test scripts
+          </label>
+          <button type="button" class="btn btn-run" id="btnRunSelected" disabled>
+            Run selected
+          </button>
+          <button type="button" class="btn btn-ghost" id="btnOpenShots">
+            Screenshots folder
+          </button>
+        </div>
+
+        <!-- iOS left · Android right -->
+        <div class="platform-split" id="scriptGroups">
+          <div class="platform-col platform-col--ios" id="colIos">
+            <div class="platform-head">
+              <span class="platform-badge platform-badge--ios" aria-hidden="true">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
+                  <path
+                    d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.81-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z"
+                  />
+                </svg>
+              </span>
+              <div>
+                <h3>iOS</h3>
+                <p>Apple scripts</p>
+              </div>
+            </div>
+            <div class="script-list" id="listIos"></div>
+          </div>
+          <div class="platform-col platform-col--android" id="colAndroid">
+            <div class="platform-head">
+              <span class="platform-badge platform-badge--android" aria-hidden="true">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
+                  <path
+                    d="M17.6 9.48l1.84-3.18c.16-.31.04-.69-.26-.85-.29-.15-.65-.06-.83.22l-1.88 3.24a11.43 11.43 0 0 0-8.94 0L5.65 5.67c-.19-.28-.54-.37-.83-.22-.3.16-.42.54-.26.85L6.4 9.48A10.8 10.8 0 0 0 1 18h22a10.8 10.8 0 0 0-5.4-8.52M7 15.25a1.25 1.25 0 1 1 0-2.5 1.25 1.25 0 0 1 0 2.5m10 0a1.25 1.25 0 1 1 0-2.5 1.25 1.25 0 0 1 0 2.5z"
+                  />
+                </svg>
+              </span>
+              <div>
+                <h3>Android</h3>
+                <p>Google scripts</p>
+              </div>
+            </div>
+            <div class="script-list" id="listAndroid"></div>
+          </div>
+        </div>
+
+        <div class="other-scripts" id="colOther" hidden>
+          <h3 class="section-label">Devices · Reports · Other</h3>
+          <div class="script-list" id="listOther"></div>
+        </div>
+
+        <div class="reports-block" id="reportsBlock">
+          <h3 class="section-label">Reports</h3>
+          <p class="muted" id="reportsEmpty">No HTML report yet — run a test first.</p>
+          <div class="report-list" id="reportList"></div>
+        </div>
+      </section>
+
+      <section class="bottom-split full-bleed">
+        <section class="panel log-panel">
+          <div class="panel-head row">
+            <div>
+              <h2>Run log</h2>
+              <p class="muted" id="runMeta">No run yet</p>
+            </div>
+            <div class="log-actions">
+              <a
+                class="btn btn-primary"
+                id="btnViewReport"
+                href="#"
+                target="_blank"
+                rel="noopener"
+                hidden
+                >View report</a
+              >
+              <button type="button" class="btn btn-danger" id="btnStopRun" hidden>
+                Stop / clear queue
+              </button>
+              <button type="button" class="btn btn-ghost" id="btnClearLog">Clear</button>
+            </div>
+          </div>
+          <div class="run-summary" id="runSummary" hidden></div>
+          <pre class="log" id="logView">Click a script to run it here.</pre>
+        </section>
+
+        <section class="panel history-panel">
+          <div class="panel-head">
+            <h2>Run history</h2>
+            <p>Last 10 runs</p>
+          </div>
+          <div class="history-list" id="historyList">
+            <p class="muted">No history yet.</p>
+          </div>
+        </section>
+      </section>
+    </main>
+
+    <footer class="foot">
+      <span>Local · bind via DASHBOARD_HOST if needed</span>
+      <span id="footHint">Start Appium before test scripts</span>
+    </footer>
+
+    <script src="/app.js"></script>
+  </body>
+</html>

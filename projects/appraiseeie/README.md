@@ -1,22 +1,16 @@
 # AppraiseeIE automation (TypeScript)
 
-Scaffolded from `projects/_template_typescript` via setup / `npm run new-project`.
+## Screens
 
-## First-time on this Mac
+| Screen | App class | Automation |
+|--------|-----------|------------|
+| **Login** (email + password) | `ViewController.h` / `ViewController.m` | `LoginPage.ts` |
+| **Role picker** (after login) | `LoginUserRoleVC` | `UserRolePage.ts` |
 
-From the repo root:
+Login accessibility ids live on **ViewController.m** (`login_email`, `login_password`, `login_submit_button`, …).  
+`LoginUserRoleVC` is only the dealer/role list after a successful login.
 
-```bash
-bash scripts/bootstrap.sh
-# choose TypeScript when asked for language, then create this project
-```
-
-Or:
-
-```bash
-npm run new-project -- --language typescript
-npm run setup -- --project appraiseeie --language typescript
-```
+**Rebuild/install** the iOS app after identifier changes before running tests.
 
 ## Run
 
@@ -28,11 +22,8 @@ appium
 cd projects/appraiseeie
 npm run check:devices:ios
 npm run test:ios:smoke
+npm run test:ios:signin
 ```
 
-## Customize
-
-1. Set `IOS_BUNDLE_ID` / `ANDROID_APP_PACKAGE` in `.env`
-2. Replace `pages/*.ts` locators for your app
-3. Add specs under `tests/**/*.test.ts`
-4. Update `catalog/testCasesCatalog.js` for the HTML report
+Credentials: `TEST_USER` / `TEST_PASSWORD` in `.env`  
+Optional: `APPRAISEE_ROLE_INDEX` (default `0`) for which role row to tap.
