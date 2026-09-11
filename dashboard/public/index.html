@@ -185,6 +185,14 @@
               <p class="muted" id="runMeta">No run yet</p>
             </div>
             <div class="log-actions">
+              <div class="log-mode" role="group" aria-label="Log view mode">
+                <button type="button" class="btn btn-tiny log-mode-btn active" id="btnLogClient" title="Plain steps for clients">
+                  Client
+                </button>
+                <button type="button" class="btn btn-tiny log-mode-btn" id="btnLogFull" title="All technical output">
+                  Full
+                </button>
+              </div>
               <a
                 class="btn btn-primary"
                 id="btnViewReport"
@@ -201,6 +209,9 @@
             </div>
           </div>
           <div class="run-summary" id="runSummary" hidden></div>
+          <p class="log-hint muted" id="logHint">
+            Client view: plain steps only (Email entered, keyboard hidden…). Switch to Full for debug.
+          </p>
           <pre class="log" id="logView">Click a script to run it here.</pre>
         </section>
 

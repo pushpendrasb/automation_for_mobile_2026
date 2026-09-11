@@ -6,6 +6,7 @@
  * ("E-mail" / "Password") and the LOGIN button title.
  */
 import { TEST_IDS } from '../data/testIds';
+import { clientLog } from '../helpers/clientLog';
 import SystemAlertsPage from './SystemAlertsPage';
 
 export class LoginPage {
@@ -98,13 +99,16 @@ export class LoginPage {
       }
     }
     await browser.pause(400);
+    clientLog('Keyboard is hidden');
   }
 
   /**
    * Wait until the email field is visible (login form ready).
    */
   async waitForLoginScreen(timeoutMs = 30000): Promise<void> {
+    clientLog('Waiting for the login screen');
     await this.findDisplayed(this.emailSelectors(), timeoutMs);
+    clientLog('Login screen is ready');
   }
 
   /**
@@ -116,6 +120,7 @@ export class LoginPage {
     await this.findDisplayed(this.passwordSelectors(), 10000);
     await this.dismissKeyboardIfNeeded();
     await this.findDisplayed(this.submitSelectors(), 10000);
+    clientLog('Email, password, and Login button are visible');
   }
 
   /**
@@ -126,6 +131,7 @@ export class LoginPage {
     await field.click();
     await field.clearValue().catch(() => undefined);
     await field.setValue(email);
+    clientLog('Email has been entered');
   }
 
   /**
@@ -136,6 +142,7 @@ export class LoginPage {
     await field.click();
     await field.clearValue().catch(() => undefined);
     await field.setValue(password);
+    clientLog('Password has been entered');
   }
 
   /**
@@ -145,6 +152,7 @@ export class LoginPage {
     await this.dismissKeyboardIfNeeded();
     const btn = await this.findDisplayed(this.submitSelectors(), 15000);
     await btn.click();
+    clientLog('Login button has been tapped');
   }
 
   /**
@@ -213,6 +221,7 @@ export class LoginPage {
     const btn = await this.findDisplayed(this.showHideSelectors(), 10000);
     await btn.click();
     await browser.pause(300);
+    clientLog('Show / hide password eye has been tapped');
   }
 
   /**

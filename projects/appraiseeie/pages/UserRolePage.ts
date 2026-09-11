@@ -5,6 +5,7 @@
  * IDs are set in LoginUserRoleVC.m only (not storyboard).
  */
 import { TEST_IDS, userRoleCellId } from '../data/testIds';
+import { clientLog } from '../helpers/clientLog';
 import SystemAlertsPage from './SystemAlertsPage';
 
 export class UserRolePage {
@@ -93,7 +94,9 @@ export class UserRolePage {
    * Wait for LoginUserRoleVC (role list) after a successful login.
    */
   async waitForRoleScreen(timeoutMs = 20000): Promise<void> {
+    clientLog('Waiting for the account / role picker');
     await this.findDisplayed(this.screenSelectors(), timeoutMs);
+    clientLog('Account / role picker is on screen');
   }
 
   /**
@@ -105,6 +108,7 @@ export class UserRolePage {
       [this.id(userRoleCellId(0)), ...this.tableSelectors()],
       10000
     );
+    clientLog('Role list is visible');
   }
 
   /**
@@ -114,6 +118,7 @@ export class UserRolePage {
   async dismissNotNowAndSelectRole(index: number, timeoutMs = 25000): Promise<void> {
     const deadline = Date.now() + timeoutMs;
     let dismissedNotNow = false;
+    clientLog(`Selecting account role #${index + 1}`);
 
     while (Date.now() < deadline) {
       // 1) Clear Save Password sheet quickly if present
@@ -123,6 +128,7 @@ export class UserRolePage {
 
       // 2) Tap first cell as soon as it is visible
       if (await this.tryClickRoleAtIndex(index)) {
+        clientLog(`Account role #${index + 1} has been selected`);
         return;
       }
 

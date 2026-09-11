@@ -19,7 +19,7 @@ Opens **http://127.0.0.1:3939**
 | **Suites** | One-click Sign-in / Smoke suites |
 | **Multi-select** | Check scripts → **Run selected** (queued) |
 | **Queue** | If a run is busy, next scripts wait automatically |
-| **Live log** | Streaming npm output |
+| **Live log** | **Client** (plain steps) or **Full** (all technical output) — toggle in Run log |
 | **Last run summary** | Pass/fail + counts + duration |
 | **View report** | Opens HTML report after finish |
 | **Reports list** | Latest report + catalog per project |
@@ -38,5 +38,6 @@ DASHBOARD_HOST=0.0.0.0 npm run dashboard   # LAN — use only on trusted network
 ## Notes
 
 - Local by default (`127.0.0.1`)
+- **Client** log mode (default): plain steps only (`Email has been entered`, `Keyboard is hidden`…). Switch to **Full** for all technical output. Choice is remembered.
 - Test runs prompt to start Appium if offline
 - Reports served from `projects/<id>/reports/*.html`

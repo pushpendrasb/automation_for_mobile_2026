@@ -6,6 +6,7 @@
  * fully on screen, then tap it.
  */
 import { TEST_IDS } from '../data/testIds';
+import { clientLog } from '../helpers/clientLog';
 
 export class SideMenuPage {
   private id(value: string): string {
@@ -220,11 +221,13 @@ export class SideMenuPage {
 
     if (howVisible || !(await this.isLogoutFullyVisible())) {
       console.log('[SideMenu] Scrolling side menu to reveal LOGOUT…');
+      clientLog('Scrolling the side menu to find Logout');
     }
 
     for (let i = 0; i < maxSwipes; i++) {
       if (await this.isLogoutFullyVisible()) {
         console.log(`[SideMenu] LOGOUT fully visible after ${i} swipe(s)`);
+        clientLog('Logout is visible in the side menu');
         return;
       }
       await this.swipeMenuUpOnce();
@@ -259,6 +262,7 @@ export class SideMenuPage {
           }
           await el.click();
           console.log(`[SideMenu] Tapped LOGOUT via ${sel}`);
+          clientLog('Logout has been tapped');
           return;
         }
       } catch {
@@ -277,6 +281,7 @@ export class SideMenuPage {
     );
     await yes.waitForDisplayed({ timeout: 8000 });
     await yes.click();
+    clientLog('Logout confirmed (YES)');
   }
 
   /**
@@ -285,6 +290,7 @@ export class SideMenuPage {
   async logout(): Promise<void> {
     await this.waitForOpen();
     console.log('[SideMenu] Starting logout — will scroll to LOGOUT');
+    clientLog('Logging out from the side menu');
     await this.tapLogout();
     await this.confirmLogoutYes();
   }

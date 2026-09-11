@@ -7,6 +7,7 @@
  * IDs are set in Objective-C/C++ viewDidLoad (not storyboard).
  */
 import { TEST_IDS } from '../data/testIds';
+import { clientLog } from '../helpers/clientLog';
 import SideMenuPage from './SideMenuPage';
 
 export class HomePage {
@@ -37,11 +38,15 @@ export class HomePage {
    * Also accepts auto-opened side menu as “reached home”.
    */
   async waitForHome(timeoutMs = 30000): Promise<void> {
+    clientLog('Waiting for the home screen');
     const deadline = Date.now() + timeoutMs;
     let lastError: unknown;
 
     while (Date.now() < deadline) {
-      if (await SideMenuPage.isOpen()) return;
+      if (await SideMenuPage.isOpen()) {
+        clientLog('Home reached (side menu opened)');
+        return;
+      }
 
       for (const sel of this.homeSelectors()) {
         try {
@@ -50,6 +55,7 @@ export class HomePage {
             (await el.isExisting().catch(() => false)) &&
             (await el.isDisplayed().catch(() => false))
           ) {
+            clientLog('Home screen is ready');
             return;
           }
         } catch (err) {
@@ -87,9 +93,11 @@ export class HomePage {
   async openSideMenu(): Promise<void> {
     if (await SideMenuPage.isOpen()) {
       console.log('[Home] Side menu already open — skip menu tap');
+      clientLog('Side menu is already open');
       return;
     }
 
+    clientLog('Opening the side menu');
     const deadline = Date.now() + 10000;
     while (Date.now() < deadline) {
       for (const sel of this.menuSelectors()) {
@@ -98,6 +106,7 @@ export class HomePage {
           if (await el.isDisplayed().catch(() => false)) {
             await el.click();
             await SideMenuPage.waitForOpen(8000);
+            clientLog('Side menu is open');
             return;
           }
         } catch {

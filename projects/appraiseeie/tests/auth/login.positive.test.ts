@@ -11,6 +11,7 @@ import SideMenuPage from '../../pages/SideMenuPage';
 import SystemAlertsPage from '../../pages/SystemAlertsPage';
 import { assertCredentialsConfigured, testData } from '../../data/testData';
 import { ensureLoggedOut } from '../../helpers/session';
+import { clientStep } from '../../helpers/clientLog';
 
 describe('AppraiseeIE — Login', () => {
   before(async () => {
@@ -19,11 +20,13 @@ describe('AppraiseeIE — Login', () => {
   });
 
   it('AP-SI-P01: Login screen shows email, password, and Login', async () => {
+    clientStep('Check login screen');
     await ensureLoggedOut();
     await LoginPage.assertLoginFormVisible();
   });
 
   it('AP-SI-P02: Valid email + password reaches user role screen', async () => {
+    clientStep('Sign in with valid email and password');
     assertCredentialsConfigured();
     await ensureLoggedOut();
     console.log(`Using TEST_USER from .env: ${testData.email}`);
@@ -39,6 +42,7 @@ describe('AppraiseeIE — Login', () => {
   });
 
   it('AP-SI-P03: Select first role after login and open home', async () => {
+    clientStep('Select first account role and open home');
     assertCredentialsConfigured();
 
     if (await LoginPage.isLoginFormVisible()) {
@@ -60,6 +64,7 @@ describe('AppraiseeIE — Login', () => {
   });
 
   it('AP-SI-P04: Side menu scroll to LOGOUT and return to login', async () => {
+    clientStep('Logout from side menu and return to login');
     // After fresh login the side menu is often already open with LOGOUT off-screen
     if (!(await HomePage.isDisplayed()) && !(await SideMenuPage.isOpen())) {
       assertCredentialsConfigured();

@@ -2,6 +2,8 @@
  * Optional iOS system / password sheets that can appear after login.
  * If the popup is missing, methods return immediately (no failure).
  */
+import { clientLog } from '../helpers/clientLog';
+
 export class SystemAlertsPage {
   /**
    * Labels for the dismiss control on Save Password / similar sheets.
@@ -49,6 +51,7 @@ export class SystemAlertsPage {
         }
         await el.click();
         console.log('[SystemAlerts] Tapped "Not Now"');
+        clientLog('Save Password prompt dismissed (Not Now)');
         await browser.pause(200);
         return true;
       } catch {

@@ -1,10 +1,15 @@
 /**
  * Automation Control Desk — client UI (full feature set).
+ *
+ * Run log modes:
+ * - Client: only `[CLIENT]` step lines (plain language for demos)
+ * - Full: every npm / Appium / WDIO line
  */
 (() => {
   const $ = (id) => document.getElementById(id);
   const LS_THEME = 'automation-dashboard-theme';
   const LS_PROJECT = 'automation-dashboard-last-project';
+  const LS_LOG_MODE = 'automation-dashboard-log-mode';
 
   const els = {
     appiumDot: $('appiumDot'),
@@ -41,6 +46,9 @@
     reportList: $('reportList'),
     btnBack: $('btnBack'),
     logView: $('logView'),
+    logHint: $('logHint'),
+    btnLogClient: $('btnLogClient'),
+    btnLogFull: $('btnLogFull'),
     runMeta: $('runMeta'),
     runSummary: $('runSummary'),
     btnViewReport: $('btnViewReport'),
@@ -55,6 +63,10 @@
   let lastLineCount = 0;
   /** @type {string[]} */
   let lastProjects = [];
+  /** @type {string[]} cached raw run lines for Client/Full toggle */
+  let cachedLogLines = [];
+  /** @type {'client' | 'full'} */
+  let logMode = localStorage.getItem(LS_LOG_MODE) === 'full' ? 'full' : 'client';
 
   async function api(path, options = {}) {
     const res = await fetch(path, {
@@ -72,6 +84,72 @@
       .replace(/</g, '&lt;')
       .replace(/>/g, '&gt;')
       .replace(/"/g, '&quot;');
+  }
+
+  /**
+   * Keep only client-facing progress lines (and a few run bookends).
+   * Scripts emit: console.log('[CLIENT] Email has been entered')
+   */
+  function filterClientLines(lines) {
+    const out = [];
+    for (const raw of lines || []) {
+      const line = String(raw);
+      const m = line.match(/\[CLIENT\]\s*(.+)$/);
+      if (m) {
+        out.push(`• ${m[1].trim()}`);
+        continue;
+      }
+      // Keep short run markers so clients still see start/end
+      if (/^\$ npm run /.test(line)) out.push(`▶ Starting: ${line.replace(/^\$\s*/, '')}`);
+      else if (/^— finished with exit code/.test(line)) {
+        const code = line.match(/exit code (\d+)/);
+        out.push(
+          Number(code?.[1]) === 0
+            ? '✓ Finished successfully'
+            : `✗ Finished with errors (code ${code?.[1] ?? '?'})`
+        );
+      } else if (/^Report: /.test(line)) out.push(line);
+      else if (/^Spawn error:/.test(line)) out.push(`✗ ${line}`);
+      else if (/stopped by user/i.test(line)) out.push('■ Stopped by user');
+    }
+    return out;
+  }
+
+  /** Apply Client vs Full filter to the cached raw lines. */
+  function renderLogView() {
+    const empty =
+      'Click a script to run it here.\n\nTip: Client mode shows plain steps (email entered, keyboard hidden…). Full mode shows every technical line.';
+    if (!cachedLogLines.length) {
+      els.logView.textContent =
+        logMode === 'client'
+          ? 'Waiting for automation steps…\n(Switch to Full if you need debug output.)'
+          : empty;
+      return;
+    }
+    if (logMode === 'client') {
+      const steps = filterClientLines(cachedLogLines);
+      els.logView.textContent = steps.length
+        ? steps.join('\n')
+        : 'No client steps yet…\n(Technical noise is hidden — steps appear as the script runs.)';
+    } else {
+      els.logView.textContent = cachedLogLines.join('\n');
+    }
+    els.logView.scrollTop = els.logView.scrollHeight;
+  }
+
+  function setLogMode(mode) {
+    logMode = mode === 'full' ? 'full' : 'client';
+    localStorage.setItem(LS_LOG_MODE, logMode);
+    els.btnLogClient?.classList.toggle('active', logMode === 'client');
+    els.btnLogFull?.classList.toggle('active', logMode === 'full');
+    els.logView.classList.toggle('log--client', logMode === 'client');
+    if (els.logHint) {
+      els.logHint.textContent =
+        logMode === 'client'
+          ? 'Client view: plain steps only (Email entered, keyboard hidden…). Switch to Full for debug.'
+          : 'Full view: all npm, Appium, and WebdriverIO output.';
+    }
+    renderLogView();
   }
 
   function applyTheme(theme) {
@@ -494,8 +572,9 @@
 
   async function runScript(projectId, script) {
     if (!(await ensureAppiumForTests(script))) return;
-    els.logView.textContent = `Starting npm run ${script}…\n`;
+    cachedLogLines = [`Starting npm run ${script}…`];
     lastLineCount = 0;
+    renderLogView();
     els.btnStopRun.hidden = false;
     showViewReport(null);
     els.runSummary.hidden = true;
@@ -529,8 +608,9 @@
         alert(result.error || 'Suite failed to start');
         return;
       }
-      els.logView.textContent = `Suite ${suiteId} started…\n`;
+      cachedLogLines = [`Suite ${suiteId} started…`];
       lastLineCount = 0;
+      renderLogView();
       els.btnStopRun.hidden = false;
       startRunPolling();
     } catch (err) {
@@ -553,8 +633,9 @@
       if (!result.ok) {
         alert('Some scripts could not be queued');
       }
-      els.logView.textContent = `Queued ${scripts.length} script(s)…\n`;
+      cachedLogLines = [`Queued ${scripts.length} script(s)…`];
       lastLineCount = 0;
+      renderLogView();
       els.btnStopRun.hidden = false;
       startRunPolling();
     } catch (err) {
@@ -576,8 +657,8 @@
       updateQueueUi(queue.length, run);
       if (!run) return;
       if (run.lines && run.lines.length !== lastLineCount) {
-        els.logView.textContent = run.lines.join('\n');
-        els.logView.scrollTop = els.logView.scrollHeight;
+        cachedLogLines = run.lines.slice();
+        renderLogView();
         lastLineCount = run.lines.length;
       }
       els.runMeta.textContent = `${run.projectId} · ${run.script} · ${run.status}${
@@ -703,13 +784,22 @@
     updateRunSelectedState();
   });
   els.btnClearLog.addEventListener('click', () => {
-    els.logView.textContent = 'Click a script to run it here.';
+    cachedLogLines = [];
+    lastLineCount = 0;
+    els.logView.textContent =
+      logMode === 'client'
+        ? 'Log cleared. Client steps will appear on the next run.'
+        : 'Click a script to run it here.';
     els.runMeta.textContent = 'No run yet';
     els.runSummary.hidden = true;
     showViewReport(null);
   });
 
+  els.btnLogClient?.addEventListener('click', () => setLogMode('client'));
+  els.btnLogFull?.addEventListener('click', () => setLogMode('full'));
+
   applyTheme(localStorage.getItem(LS_THEME) === 'dark' ? 'dark' : 'light');
+  setLogMode(logMode);
   refreshAppium();
   refreshDevices('');
   loadHistory();
