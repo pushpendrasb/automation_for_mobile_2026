@@ -125,6 +125,14 @@ export class HomePage {
     await this.openSideMenu();
     await SideMenuPage.logout();
   }
+
+  /**
+   * Open side menu and start Create Appraisal (TradeIn).
+   */
+  async openCreateAppraisal(): Promise<void> {
+    await this.openSideMenu();
+    await SideMenuPage.tapCreateNewAppraisal();
+  }
 }
 
 export default new HomePage();

@@ -313,38 +313,37 @@
   }
 
   /**
-   * Professional project-card themes — deep neutrals + one refined accent.
-   * Known projects get a curated look; others hash into the palette.
+   * Clean brand headers (solid + accent bar) — no muddy mesh blends.
    */
   const PROJECT_THEMES = {
     appraiseeie: {
-      ink: '#0B1F1C',
-      mid: '#1F6F5B',
-      accent: '#C2A878',
-      soft: '#E8F2EE',
+      ink: '#0F3D36',
+      mid: '#147A6A',
+      accent: '#E8B86D',
+      soft: '#F4FBF9',
       mark: 'AE',
     },
     roskids: {
-      ink: '#1A1520',
-      mid: '#4A5568',
-      accent: '#E8D5B7',
-      soft: '#F3F0EB',
+      ink: '#1C1917',
+      mid: '#44403C',
+      accent: '#F0C987',
+      soft: '#FAFAF9',
       mark: 'RK',
     },
     vetpal: {
-      ink: '#0E1A24',
-      mid: '#2F5D7A',
-      accent: '#9BB8C9',
-      soft: '#EAF1F5',
+      ink: '#0F2744',
+      mid: '#1E4D7B',
+      accent: '#6EB5D8',
+      soft: '#F5F9FC',
       mark: 'VP',
     },
   };
 
   const CARD_FALLBACKS = [
-    { ink: '#141414', mid: '#3D4F5F', accent: '#B7C4CE', soft: '#EEF2F4', mark: '' },
-    { ink: '#1A1612', mid: '#5C4A3A', accent: '#D2B48C', soft: '#F5F0EA', mark: '' },
-    { ink: '#121A18', mid: '#3E6B5E', accent: '#A8C5B8', soft: '#EBF3EF', mark: '' },
-    { ink: '#101820', mid: '#3A5A6E', accent: '#7EB6C9', soft: '#E8F1F5', mark: '' },
+    { ink: '#1A1A1A', mid: '#3F3F46', accent: '#A1A1AA', soft: '#FAFAFA', mark: '' },
+    { ink: '#1C1410', mid: '#6B4423', accent: '#D4A574', soft: '#FBF7F2', mark: '' },
+    { ink: '#0F2922', mid: '#1F6B55', accent: '#7BC4A8', soft: '#F3FAF7', mark: '' },
+    { ink: '#111827', mid: '#1E3A5F', accent: '#93C5FD', soft: '#F8FAFC', mark: '' },
   ];
 
   function themeForId(id) {
@@ -544,7 +543,7 @@
       btn.style.setProperty('--card-soft', theme.soft);
       btn.innerHTML = `
         <div class="project-card-art" aria-hidden="true">
-          <span class="project-card-mesh"></span>
+          <span class="project-card-accent"></span>
           <span class="project-card-mark">${escapeHtml(theme.mark)}</span>
           <span class="phone"></span>
         </div>

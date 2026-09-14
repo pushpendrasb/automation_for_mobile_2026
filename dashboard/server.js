@@ -422,6 +422,15 @@ function listSuites(projectId) {
     });
   }
 
+  if (scripts.includes('test:ios:appraisal')) {
+    suites.push({
+      id: 'ios-appraisal',
+      title: 'iOS Create Appraisal',
+      scripts: ['test:ios:appraisal'],
+      description: 'TradeIn 4-step create appraisal (validation + photos)',
+    });
+  }
+
   if (scripts.includes('test:ios:smoke') || scripts.includes('test:ios:screens')) {
     const smoke = ['test:ios:smoke', 'test:ios:screens'].filter((n) =>
       scripts.includes(n)

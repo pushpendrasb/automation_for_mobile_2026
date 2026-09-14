@@ -466,81 +466,67 @@ a.btn {
 }
 
 .project-card-art {
-  height: 108px;
+  height: 96px;
   position: relative;
   overflow: hidden;
-  background:
-    radial-gradient(ellipse 80% 90% at 12% 20%, var(--card-accent), transparent 55%),
-    radial-gradient(ellipse 70% 80% at 88% 10%, color-mix(in srgb, var(--card-mid) 70%, white), transparent 50%),
-    linear-gradient(145deg, var(--card-ink) 0%, var(--card-mid) 58%, color-mix(in srgb, var(--card-ink) 70%, var(--card-accent)) 100%);
+  /* Clean solid brand band — no muddy multi-stop blends */
+  background: var(--card-mid);
 }
 
-.project-card-mesh {
+.project-card-accent {
   position: absolute;
-  inset: 0;
-  opacity: 0.22;
-  background-image:
-    linear-gradient(rgba(255, 255, 255, 0.12) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255, 255, 255, 0.12) 1px, transparent 1px);
-  background-size: 18px 18px;
-  mask-image: linear-gradient(180deg, black 0%, transparent 85%);
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 5px;
+  background: var(--card-accent);
 }
 
 .project-card-mark {
   position: absolute;
-  left: 1.1rem;
-  top: 1rem;
+  left: 1.15rem;
+  top: 50%;
+  transform: translateY(-50%);
   z-index: 1;
   font-family: var(--display);
-  font-size: 1.65rem;
+  font-size: 1.85rem;
   font-weight: 600;
-  letter-spacing: -0.04em;
-  color: rgba(255, 255, 255, 0.92);
-  text-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
-}
-
-.project-card-art::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(to bottom, transparent 35%, var(--card-bg));
+  letter-spacing: -0.03em;
+  color: #fff;
+  line-height: 1;
 }
 
 .project-card-art .phone {
   position: absolute;
-  right: 18px;
-  bottom: 10px;
-  width: 48px;
-  height: 74px;
-  border-radius: 10px;
-  border: 1.5px solid rgba(255, 255, 255, 0.4);
-  background: linear-gradient(
-    160deg,
-    rgba(255, 255, 255, 0.22),
-    rgba(255, 255, 255, 0.06)
-  );
-  backdrop-filter: blur(6px);
-  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.22);
+  right: 1.15rem;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 36px;
+  height: 56px;
+  border-radius: 8px;
+  border: 1.5px solid rgba(255, 255, 255, 0.55);
+  background: rgba(255, 255, 255, 0.12);
   z-index: 1;
 }
 
 .project-card-art .phone::before {
   content: "";
   position: absolute;
-  top: 6px;
+  top: 5px;
   left: 50%;
   transform: translateX(-50%);
-  width: 14px;
-  height: 3px;
+  width: 12px;
+  height: 2px;
   border-radius: 99px;
-  background: rgba(255, 255, 255, 0.45);
+  background: rgba(255, 255, 255, 0.5);
 }
 
 .project-card-body {
-  padding: 0.1rem 1.15rem 1.2rem;
+  padding: 1rem 1.15rem 1.2rem;
   flex: 1;
   display: flex;
   flex-direction: column;
+  border-top: 1px solid var(--line);
 }
 
 .project-card h3 {

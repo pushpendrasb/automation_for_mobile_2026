@@ -1,10 +1,11 @@
 /**
- * Accessibility identifiers for Appraisee IE (must match Objective-C app).
+ * Accessibility IDs for Appraisee IE (must match Objective-C app).
  *
  * Login screen  → ViewController.h / ViewController.m
  * Role picker   → LoginUserRoleVC (after successful login — not the login form)
  * Home          → HistoryViewController / TradeIn
  * Side menu     → SideMenuViewController.m
+ * Create Appraisal → TradeIn.mm
  */
 export const TEST_IDS = {
   /** ViewController — email/password login */
@@ -38,6 +39,36 @@ export const TEST_IDS = {
     screen: 'side_menu_screen',
     table: 'side_menu_table',
     logout: 'side_menu_logout',
+    createAppraisal: 'side_menu_item_0',
+  },
+  /** TradeIn — Create Appraisal wizard */
+  tradeIn: {
+    customerName: 'tradein_customer_name',
+    customerEmail: 'tradein_customer_email',
+    customerMobile: 'tradein_customer_mobile',
+    reqRegistration: 'tradein_req_registration',
+    reqMake: 'tradein_req_make',
+    reqModel: 'tradein_req_model',
+    reqColour: 'tradein_req_colour',
+    reqMileage: 'tradein_req_mileage',
+    reqNext: 'tradein_req_next',
+    trdRegistration: 'tradein_trd_registration',
+    trdMake: 'tradein_trd_make',
+    trdModel: 'tradein_trd_model',
+    trdColour: 'tradein_trd_colour',
+    trdMileage: 'tradein_trd_mileage',
+    trdTaxExpiry: 'tradein_trd_tax_expiry',
+    trdNctExpiry: 'tradein_trd_nct_expiry',
+    trdNext: 'tradein_trd_next',
+    tyreOk: 'tradein_tyre_ok',
+    tyreDamage: 'tradein_tyre_damage',
+    alloyOk: 'tradein_alloy_ok',
+    alloyDamage: 'tradein_alloy_damage',
+    tyrePhotos: 'tradein_tyre_photos',
+    alloyPhotos: 'tradein_alloy_photos',
+    damageNext: 'tradein_damage_next',
+    vehiclePhotos: 'tradein_vehicle_photos',
+    photosSave: 'tradein_photos_save',
   },
 } as const;
 

@@ -1,11 +1,11 @@
 /**
- * Session helpers — ensure a clean login screen before auth tests.
- * If already on home, opens SideMenuViewController, scrolls to LOGOUT, logs out.
+ * Session helpers — login / logout for Appraisee IE auth and Create Appraisal flows.
  */
 import LoginPage from '../pages/LoginPage';
 import UserRolePage from '../pages/UserRolePage';
 import HomePage from '../pages/HomePage';
 import SystemAlertsPage from '../pages/SystemAlertsPage';
+import { assertCredentialsConfigured, testData } from '../data/testData';
 import { clientLog } from './clientLog';
 
 /**
@@ -54,7 +54,6 @@ export async function ensureLoggedOut(): Promise<void> {
     }
   }
 
-  // Last resort: if login appears soon
   try {
     await LoginPage.waitForLoginScreen(8000);
   } catch {
@@ -62,4 +61,40 @@ export async function ensureLoggedOut(): Promise<void> {
       'Could not reach login screen. Logout from home (menu → LOGOUT) or reinstall the app.'
     );
   }
+}
+
+/**
+ * Ensure we are past login + role picker and on home / TradeIn.
+ * Used by Create Appraisal and other post-auth flows.
+ */
+export async function ensureLoggedIn(): Promise<void> {
+  assertCredentialsConfigured();
+  await SystemAlertsPage.tapNotNowIfVisible();
+
+  if (await HomePage.isDisplayed()) {
+    clientLog('Already on home — ready for Create Appraisal');
+    return;
+  }
+
+  if (await UserRolePage.isDisplayed()) {
+    clientLog('On role picker — selecting role');
+    await UserRolePage.dismissNotNowAndSelectRole(testData.roleIndex);
+    await HomePage.waitForHome(25000);
+    return;
+  }
+
+  if (await LoginPage.isLoginFormVisible()) {
+    clientLog('On login — signing in');
+    await LoginPage.login(testData.email, testData.password);
+    await SystemAlertsPage.tapNotNowIfVisible();
+    await UserRolePage.dismissNotNowAndSelectRole(testData.roleIndex);
+    await HomePage.waitForHome(25000);
+    return;
+  }
+
+  await ensureLoggedOut();
+  await LoginPage.login(testData.email, testData.password);
+  await SystemAlertsPage.tapNotNowIfVisible();
+  await UserRolePage.dismissNotNowAndSelectRole(testData.roleIndex);
+  await HomePage.waitForHome(25000);
 }

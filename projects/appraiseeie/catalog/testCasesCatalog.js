@@ -151,6 +151,25 @@ const ALL_TEST_CASES = [
     passWhen: 'login form still visible',
     failWhen: 'Reached role screen',
   },
+  {
+    caseId: 'AP-CA-P01',
+    module: 'Create Appraisal',
+    type: 'positive',
+    title: 'Create appraisal through all four TradeIn steps',
+    understanding:
+      'From side menu open CREATE NEW APPRAISAL, fill mandatory * fields (name, email, plate, mileage, tax), set tyre/alloy damage, upload photos, SAVE.',
+    steps: [
+      'Side menu → CREATE NEW APPRAISAL',
+      'Empty NEXT → name validation',
+      'Name Paul, email sami@appdesign.ie, random mobile, plate 141D6333',
+      'Trade In lookup → mileage → NEXT',
+      'Damage tyre/alloy (env) + photos if DAMAGE',
+      'Vehicle Photos ADD all slots → SAVE',
+    ],
+    expected: 'Completes Vehicle Required → Trade In → Damage → Photos SAVE',
+    passWhen: 'SAVE tapped without uncaught Appium error',
+    failWhen: 'Stuck on validation, lookup, or photo picker',
+  },
 ];
 
 /**

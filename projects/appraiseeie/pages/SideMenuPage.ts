@@ -294,6 +294,34 @@ export class SideMenuPage {
     await this.tapLogout();
     await this.confirmLogoutYes();
   }
+
+  /**
+   * Tap CREATE NEW APPRAISAL (row 0 → TradeIn Create Appraisal).
+   */
+  async tapCreateNewAppraisal(): Promise<void> {
+    await this.waitForOpen();
+    clientLog('Opening Create New Appraisal from the side menu');
+    const selectors = [
+      this.id(TEST_IDS.sideMenu.createAppraisal),
+      '~CREATE NEW APPRAISAL',
+      '-ios predicate string:label == "CREATE NEW APPRAISAL" OR name == "CREATE NEW APPRAISAL"',
+      '-ios class chain:**/XCUIElementTypeCell[`label == "CREATE NEW APPRAISAL"`]',
+    ];
+    for (const sel of selectors) {
+      try {
+        const el = await $(sel);
+        if (await el.isDisplayed().catch(() => false)) {
+          await el.click();
+          clientLog('Create New Appraisal tapped');
+          await browser.pause(800);
+          return;
+        }
+      } catch {
+        /* next */
+      }
+    }
+    throw new Error('CREATE NEW APPRAISAL / side_menu_item_0 not found');
+  }
 }
 
 export default new SideMenuPage();
