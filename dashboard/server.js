@@ -69,7 +69,140 @@ function saveHistoryEntry(entry) {
   ensureDataDir();
   const list = loadHistory();
   list.unshift(entry);
-  fs.writeFileSync(HISTORY_FILE, JSON.stringify(list.slice(0, 10), null, 2));
+  // Keep enough runs so each archived report stays discoverable
+  fs.writeFileSync(HISTORY_FILE, JSON.stringify(list.slice(0, 25), null, 2));
+}
+
+/**
+ * Resolve report base name from project.config.js (e.g. appraiseeie-report).
+ * @param {string} projectId
+ */
+function getReportBaseName(projectId) {
+  let reportBaseName = `${projectId}-report`;
+  try {
+    const cfg = require(path.join(PROJECTS_DIR, projectId, 'project.config.js'));
+    if (cfg.reportBaseName) reportBaseName = cfg.reportBaseName;
+  } catch {
+    /* ignore */
+  }
+  return reportBaseName;
+}
+
+/**
+ * Copy the latest HTML report into a unique snapshot so history links
+ * do not all open the same overwritten file.
+ * @param {string} projectId
+ * @param {string} runId
+ * @returns {{ url: string, name: string } | null}
+ */
+function archiveLatestReport(projectId, runId) {
+  if (!isRealProject(projectId)) return null;
+  const reportsDir = path.join(PROJECTS_DIR, projectId, 'reports');
+  const base = getReportBaseName(projectId);
+  const latest = path.join(reportsDir, `${base}.html`);
+  if (!fs.existsSync(latest)) return null;
+
+  const stamp = new Date()
+    .toISOString()
+    .replace(/[-:]/g, '')
+    .replace(/\.\d+Z$/, 'Z')
+    .replace('T', '-');
+  const shortId = String(runId || 'run')
+    .replace(/[^a-zA-Z0-9_-]/g, '')
+    .slice(-8);
+  const name = `${base}-${stamp}-${shortId}.html`;
+  const dest = path.join(reportsDir, name);
+  try {
+    fs.copyFileSync(latest, dest);
+  } catch {
+    return null;
+  }
+
+  // Prune very old snapshots (keep latest + newest 30 archives)
+  try {
+    const archives = fs
+      .readdirSync(reportsDir)
+      .filter(
+        (f) =>
+          f.startsWith(`${base}-`) &&
+          f.endsWith('.html') &&
+          f !== `${base}.html`
+      )
+      .map((f) => ({
+        f,
+        m: fs.statSync(path.join(reportsDir, f)).mtimeMs,
+      }))
+      .sort((a, b) => b.m - a.m);
+    for (const old of archives.slice(30)) {
+      try {
+        fs.unlinkSync(path.join(reportsDir, old.f));
+      } catch {
+        /* ignore */
+      }
+    }
+  } catch {
+    /* ignore */
+  }
+
+  return {
+    name,
+    url: `/project-reports/${encodeURIComponent(projectId)}/${encodeURIComponent(name)}`,
+  };
+}
+
+function listReports(projectId) {
+  if (!isRealProject(projectId)) return [];
+  const reportsDir = path.join(PROJECTS_DIR, projectId, 'reports');
+  if (!fs.existsSync(reportsDir)) return [];
+
+  const reportBaseName = getReportBaseName(projectId);
+
+  const files = fs
+    .readdirSync(reportsDir)
+    .filter((f) => f.endsWith('.html') && !f.startsWith('.'));
+
+  const scored = files.map((name) => {
+    const full = path.join(reportsDir, name);
+    const st = fs.statSync(full);
+    let kind = 'other';
+    let label = name;
+    if (name === `${reportBaseName}.html`) {
+      kind = 'latest';
+      label = 'Latest test report';
+    } else if (name === 'test-catalog.html') {
+      kind = 'catalog';
+      label = 'Test catalog';
+    } else if (
+      name.startsWith(`${reportBaseName}-`) &&
+      name.endsWith('.html')
+    ) {
+      kind = 'archive';
+      // Prefer readable time from file mtime
+      const when = new Date(st.mtimeMs).toLocaleString();
+      label = `Run report · ${when}`;
+    } else if (name.includes('report')) {
+      kind = 'report';
+      label = name.replace(/\.html$/, '');
+    }
+    return {
+      name,
+      label,
+      kind,
+      mtime: st.mtimeMs,
+      size: st.size,
+      url: `/project-reports/${encodeURIComponent(projectId)}/${encodeURIComponent(name)}`,
+    };
+  });
+
+  // Latest first, then archives by date, catalog last among specials
+  scored.sort((a, b) => {
+    const rank = { latest: 0, archive: 1, report: 2, catalog: 3, other: 4 };
+    const ra = rank[a.kind] ?? 9;
+    const rb = rank[b.kind] ?? 9;
+    if (ra !== rb) return ra - rb;
+    return b.mtime - a.mtime;
+  });
+  return scored;
 }
 
 function readEnvFile(projectId) {
@@ -199,55 +332,6 @@ function getDevicesStatus(projectId) {
         ? `${iosDevices.length} iOS · ${androidDevices.length} Android`
         : 'No devices detected',
   };
-}
-
-function listReports(projectId) {
-  if (!isRealProject(projectId)) return [];
-  const reportsDir = path.join(PROJECTS_DIR, projectId, 'reports');
-  if (!fs.existsSync(reportsDir)) return [];
-
-  let reportBaseName = `${projectId}-report`;
-  try {
-    const cfg = require(path.join(PROJECTS_DIR, projectId, 'project.config.js'));
-    if (cfg.reportBaseName) reportBaseName = cfg.reportBaseName;
-  } catch {
-    /* ignore */
-  }
-
-  const files = fs
-    .readdirSync(reportsDir)
-    .filter((f) => f.endsWith('.html') && !f.startsWith('.'));
-
-  const scored = files.map((name) => {
-    const full = path.join(reportsDir, name);
-    const st = fs.statSync(full);
-    let kind = 'other';
-    let label = name;
-    if (name === `${reportBaseName}.html`) {
-      kind = 'latest';
-      label = 'Latest test report';
-    } else if (name === 'test-catalog.html') {
-      kind = 'catalog';
-      label = 'Test catalog';
-    } else if (name.includes('report')) {
-      kind = 'report';
-      label = name.replace(/\.html$/, '');
-    }
-    return {
-      name,
-      label,
-      kind,
-      mtime: st.mtimeMs,
-      size: st.size,
-      url: `/project-reports/${encodeURIComponent(projectId)}/${encodeURIComponent(name)}`,
-    };
-  });
-
-  scored.sort((a, b) => {
-    const rank = { latest: 0, catalog: 1, report: 2, other: 3 };
-    return (rank[a.kind] ?? 9) - (rank[b.kind] ?? 9) || b.mtime - a.mtime;
-  });
-  return scored;
 }
 
 function resolveReportFile(projectId, fileName) {
@@ -527,6 +611,11 @@ function publicRun() {
     (activeRun.status !== 'running' ? listReports(activeRun.projectId) : []);
   const durationMs =
     (activeRun.finishedAt || Date.now()) - activeRun.startedAt;
+  const primaryReportUrl =
+    activeRun.primaryReportUrl ||
+    reports.find((r) => r.kind === 'latest')?.url ||
+    reports[0]?.url ||
+    null;
   return {
     id: activeRun.id,
     projectId: activeRun.projectId,
@@ -539,7 +628,8 @@ function publicRun() {
     lineCount: activeRun.lines.length,
     lines: activeRun.lines.slice(-500),
     reports,
-    primaryReportUrl: reports[0]?.url || null,
+    primaryReportUrl,
+    archivedReportName: activeRun.archivedReportName || null,
     summary: activeRun.summary || null,
     queueRemaining: runQueue.length,
   };
@@ -586,16 +676,38 @@ function parseSummaryFromLines(lines) {
 
 function finishActiveRun(code, statusOverride) {
   if (!activeRun) return;
+  // Already finalized (e.g. user Stop) — don't overwrite or double-save history
+  if (activeRun.status !== 'running' && !statusOverride) return;
+
   activeRun.status =
     statusOverride || (code === 0 ? 'passed' : 'failed');
   activeRun.exitCode = code;
   activeRun.finishedAt = Date.now();
   activeRun.lines.push('');
-  activeRun.lines.push(`— finished with exit code ${code} —`);
+  if (statusOverride === 'stopped') {
+    activeRun.lines.push('— stopped by user (queue cleared) —');
+  } else {
+    activeRun.lines.push(`— finished with exit code ${code} —`);
+  }
+
+  // Snapshot HTML so this run's Report link never changes when the next run overwrites latest
+  const archived = archiveLatestReport(activeRun.projectId, activeRun.id);
   const reports = listReports(activeRun.projectId);
   activeRun.reports = reports;
-  if (reports[0]) activeRun.lines.push(`Report: ${reports[0].url}`);
+  const reportUrl =
+    archived?.url ||
+    reports.find((r) => r.kind === 'latest')?.url ||
+    reports[0]?.url ||
+    null;
+  if (reportUrl) {
+    activeRun.lines.push(`Report: ${reportUrl}`);
+    if (archived?.name) {
+      activeRun.lines.push(`Archived as: ${archived.name}`);
+    }
+  }
   activeRun.summary = parseSummaryFromLines(activeRun.lines);
+  activeRun.primaryReportUrl = reportUrl;
+  activeRun.archivedReportName = archived?.name || null;
 
   saveHistoryEntry({
     id: activeRun.id,
@@ -606,7 +718,8 @@ function finishActiveRun(code, statusOverride) {
     startedAt: activeRun.startedAt,
     finishedAt: activeRun.finishedAt,
     durationMs: activeRun.finishedAt - activeRun.startedAt,
-    primaryReportUrl: reports[0]?.url || null,
+    primaryReportUrl: reportUrl,
+    archivedReportName: archived?.name || null,
     summary: activeRun.summary,
   });
 }
@@ -667,6 +780,8 @@ function beginScriptRun(projectId, script, opts = {}) {
     cwd,
     env: { ...process.env, FORCE_COLOR: '0' },
     shell: false,
+    // New process group so Stop can kill npm + WDIO children together
+    detached: process.platform !== 'win32',
   });
 
   const append = (chunk, stream) => {
@@ -683,12 +798,15 @@ function beginScriptRun(projectId, script, opts = {}) {
   runChild.stdout.on('data', (d) => append(d, 'out'));
   runChild.stderr.on('data', (d) => append(d, 'err'));
   runChild.on('close', (code) => {
-    finishActiveRun(code);
+    // If user already stopped, leave status as stopped
+    if (activeRun && activeRun.status === 'running') {
+      finishActiveRun(code);
+    }
     runChild = null;
     setTimeout(pumpQueue, 400);
   });
   runChild.on('error', (err) => {
-    if (activeRun) {
+    if (activeRun && activeRun.status === 'running') {
       activeRun.lines.push(`Spawn error: ${err.message}`);
       finishActiveRun(1);
     }
@@ -714,38 +832,52 @@ function enqueueMany(projectId, scripts) {
   };
 }
 
+/**
+ * Stop the active npm/WDIO run and clear the queue.
+ * Kills the whole process group so child test processes die too.
+ */
 function stopScriptRun() {
   runQueue = [];
-  if (!runChild) {
-    if (activeRun && activeRun.status === 'running') {
-      activeRun.status = 'stopped';
-      activeRun.finishedAt = Date.now();
+  const child = runChild;
+  const pid = child?.pid;
+
+  if (pid) {
+    try {
+      // Negative PID = kill process group (npm + wdio + mocha)
+      if (process.platform !== 'win32') {
+        process.kill(-pid, 'SIGTERM');
+      } else {
+        child.kill('SIGTERM');
+      }
+    } catch {
+      try {
+        child.kill('SIGTERM');
+      } catch {
+        /* ignore */
+      }
     }
-    return { ok: true, run: publicRun(), queue: [] };
+    // Force-kill if still alive after 1.5s
+    setTimeout(() => {
+      try {
+        if (process.platform !== 'win32') {
+          process.kill(-pid, 'SIGKILL');
+        }
+      } catch {
+        /* ignore */
+      }
+      try {
+        process.kill(pid, 'SIGKILL');
+      } catch {
+        /* ignore */
+      }
+    }, 1500);
   }
-  try {
-    runChild.kill('SIGTERM');
-  } catch {
-    /* ignore */
+
+  if (activeRun && activeRun.status === 'running') {
+    finishActiveRun(null, 'stopped');
   }
-  if (activeRun) {
-    activeRun.status = 'stopped';
-    activeRun.finishedAt = Date.now();
-    activeRun.lines.push('— stopped by user (queue cleared) —');
-    activeRun.reports = listReports(activeRun.projectId);
-    saveHistoryEntry({
-      id: activeRun.id,
-      projectId: activeRun.projectId,
-      script: activeRun.script,
-      status: 'stopped',
-      exitCode: activeRun.exitCode,
-      startedAt: activeRun.startedAt,
-      finishedAt: activeRun.finishedAt,
-      durationMs: activeRun.finishedAt - activeRun.startedAt,
-      primaryReportUrl: activeRun.reports[0]?.url || null,
-      summary: activeRun.summary,
-    });
-  }
+
+  runChild = null;
   return { ok: true, run: publicRun(), queue: [] };
 }
 

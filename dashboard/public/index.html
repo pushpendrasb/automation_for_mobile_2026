@@ -172,7 +172,9 @@
 
         <div class="reports-block" id="reportsBlock">
           <h3 class="section-label">Reports</h3>
-          <p class="muted" id="reportsEmpty">No HTML report yet — run a test first.</p>
+          <p class="muted" id="reportsEmpty">
+            No HTML report yet — run a test first. Past runs are saved as separate snapshots.
+          </p>
           <div class="report-list" id="reportList"></div>
         </div>
       </section>
@@ -203,10 +205,20 @@
                 >View report</a
               >
               <button type="button" class="btn btn-danger" id="btnStopRun" hidden>
-                Stop / clear queue
+                Stop script
               </button>
               <button type="button" class="btn btn-ghost" id="btnClearLog">Clear</button>
             </div>
+          </div>
+          <div class="run-ack" id="runAck" hidden>
+            <span class="run-ack-dot" aria-hidden="true"></span>
+            <div class="run-ack-text">
+              <strong id="runAckTitle">Ready</strong>
+              <span id="runAckDetail" class="muted"></span>
+            </div>
+            <button type="button" class="btn btn-danger btn-stop-ack" id="btnStopAck" hidden>
+              Stop script
+            </button>
           </div>
           <div class="run-summary" id="runSummary" hidden></div>
           <p class="log-hint muted" id="logHint">
@@ -218,7 +230,7 @@
         <section class="panel history-panel">
           <div class="panel-head">
             <h2>Run history</h2>
-            <p>Last 10 runs</p>
+            <p>Last 25 runs · each new run saves its own report snapshot</p>
           </div>
           <div class="history-list" id="historyList">
             <p class="muted">No history yet.</p>

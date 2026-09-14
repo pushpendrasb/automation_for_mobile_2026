@@ -24,7 +24,7 @@ Opens **http://127.0.0.1:3939**
 | **View report** | Opens HTML report after finish |
 | **Reports list** | Latest report + catalog per project |
 | **Screenshots** | Opens `projects/<id>/screenshots` in Finder |
-| **History** | Last 10 runs (saved under `dashboard/data/`) |
+| **History** | Last 25 runs; each finished run archives its own HTML report snapshot |
 | **Theme** | Light / Dark (remembered) |
 | **Last project** | Reopens the project you used last |
 

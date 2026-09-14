@@ -53,7 +53,11 @@
     runSummary: $('runSummary'),
     btnViewReport: $('btnViewReport'),
     btnStopRun: $('btnStopRun'),
+    btnStopAck: $('btnStopAck'),
     btnClearLog: $('btnClearLog'),
+    runAck: $('runAck'),
+    runAckTitle: $('runAckTitle'),
+    runAckDetail: $('runAckDetail'),
     historyList: $('historyList'),
     footHint: $('footHint'),
   };
@@ -67,6 +71,10 @@
   let cachedLogLines = [];
   /** @type {'client' | 'full'} */
   let logMode = localStorage.getItem(LS_LOG_MODE) === 'full' ? 'full' : 'client';
+  /** @type {string | null} script currently acknowledged in the UI */
+  let activeScriptName = null;
+  /** Avoid re-painting run banner / row every poll tick */
+  let lastRunUiKey = '';
 
   async function api(path, options = {}) {
     const res = await fetch(path, {
@@ -304,19 +312,51 @@
     } failed · ${s.skipped ?? 0} skipped · ${formatDuration(run.durationMs)}`;
   }
 
-  /** Soft gradient art themes for project cards (teal / coral / ink — not purple). */
-  const CARD_THEMES = [
-    ['#0f766e', '#2dd4bf', '#ea580c'],
-    ['#115e59', '#f97316', '#fde68a'],
-    ['#134e4a', '#0ea5e9', '#fbbf24'],
-    ['#1c1917', '#65a30d', '#fdba74'],
-    ['#0c4a6e', '#14b8a6', '#fb923c'],
+  /**
+   * Professional project-card themes — deep neutrals + one refined accent.
+   * Known projects get a curated look; others hash into the palette.
+   */
+  const PROJECT_THEMES = {
+    appraiseeie: {
+      ink: '#0B1F1C',
+      mid: '#1F6F5B',
+      accent: '#C2A878',
+      soft: '#E8F2EE',
+      mark: 'AE',
+    },
+    roskids: {
+      ink: '#1A1520',
+      mid: '#4A5568',
+      accent: '#E8D5B7',
+      soft: '#F3F0EB',
+      mark: 'RK',
+    },
+    vetpal: {
+      ink: '#0E1A24',
+      mid: '#2F5D7A',
+      accent: '#9BB8C9',
+      soft: '#EAF1F5',
+      mark: 'VP',
+    },
+  };
+
+  const CARD_FALLBACKS = [
+    { ink: '#141414', mid: '#3D4F5F', accent: '#B7C4CE', soft: '#EEF2F4', mark: '' },
+    { ink: '#1A1612', mid: '#5C4A3A', accent: '#D2B48C', soft: '#F5F0EA', mark: '' },
+    { ink: '#121A18', mid: '#3E6B5E', accent: '#A8C5B8', soft: '#EBF3EF', mark: '' },
+    { ink: '#101820', mid: '#3A5A6E', accent: '#7EB6C9', soft: '#E8F1F5', mark: '' },
   ];
 
   function themeForId(id) {
+    if (PROJECT_THEMES[id]) return PROJECT_THEMES[id];
     let h = 0;
     for (let i = 0; i < id.length; i++) h = (h + id.charCodeAt(i) * (i + 1)) % 997;
-    return CARD_THEMES[h % CARD_THEMES.length];
+    const t = { ...CARD_FALLBACKS[h % CARD_FALLBACKS.length] };
+    t.mark = String(id || 'P')
+      .replace(/[^a-zA-Z0-9]/g, '')
+      .slice(0, 2)
+      .toUpperCase() || 'P';
+    return t;
   }
 
   /**
@@ -327,6 +367,7 @@
   function createScriptRow(projectId, s) {
     const row = document.createElement('div');
     row.className = 'script-row';
+    row.dataset.script = s.name;
     const left = document.createElement('div');
     left.className = 'left';
     if (s.selectable) {
@@ -346,10 +387,122 @@
     const runBtn = document.createElement('button');
     runBtn.type = 'button';
     runBtn.className = 'btn btn-run';
+    runBtn.dataset.script = s.name;
     runBtn.textContent = s.runnable ? 'Run' : 'Open';
-    runBtn.addEventListener('click', () => runScript(projectId, s.name));
+    runBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      if (runBtn.classList.contains('is-stop')) {
+        stopRun();
+        return;
+      }
+      runScript(projectId, s.name);
+    });
     row.appendChild(runBtn);
     return row;
+  }
+
+  /** Clear running/queued highlights from all script rows. */
+  function clearScriptRowStates() {
+    document.querySelectorAll('.script-row').forEach((row) => {
+      row.classList.remove('is-running', 'is-queued', 'is-done-pass', 'is-done-fail');
+      const btn = row.querySelector('.btn-run');
+      if (btn) {
+        btn.classList.remove('is-busy', 'is-stop');
+        btn.disabled = false;
+        if (
+          btn.textContent === 'Running…' ||
+          btn.textContent === 'Queued…' ||
+          btn.textContent === 'Stop'
+        ) {
+          btn.textContent = 'Run';
+        }
+      }
+    });
+    document.querySelector('.log-panel')?.classList.remove('is-live');
+  }
+
+  /**
+   * Highlight the script that is running / queued and update its Run button.
+   * While running, the row button becomes Stop so the user can cancel.
+   * @param {string | null} scriptName
+   * @param {'running' | 'queued' | 'passed' | 'failed' | 'idle'} state
+   */
+  function setScriptRowState(scriptName, state) {
+    clearScriptRowStates();
+    if (!scriptName || state === 'idle') return;
+
+    const row = document.querySelector(
+      `.script-row[data-script="${CSS.escape(scriptName)}"]`
+    );
+    if (!row) return;
+
+    const btn = row.querySelector('.btn-run');
+    if (state === 'running') {
+      row.classList.add('is-running');
+      document.querySelector('.log-panel')?.classList.add('is-live');
+      if (btn) {
+        btn.classList.add('is-stop');
+        btn.textContent = 'Stop';
+        btn.disabled = false;
+      }
+    } else if (state === 'queued') {
+      row.classList.add('is-queued');
+      if (btn) {
+        btn.classList.add('is-busy');
+        btn.textContent = 'Queued…';
+        btn.disabled = true;
+      }
+    } else if (state === 'passed') {
+      row.classList.add('is-done-pass');
+      if (btn) {
+        btn.textContent = 'Run';
+        btn.disabled = false;
+      }
+    } else if (state === 'failed') {
+      row.classList.add('is-done-fail');
+      if (btn) {
+        btn.textContent = 'Run';
+        btn.disabled = false;
+      }
+    }
+  }
+
+  /**
+   * Banner above the log: acknowledge that a script started / finished.
+   * @param {{ title: string, detail?: string, state?: string, show?: boolean }} opts
+   */
+  function setRunAck({ title, detail = '', state = 'running', show = true }) {
+    if (!els.runAck) return;
+    els.runAck.hidden = !show;
+    els.runAck.dataset.state = state;
+    if (els.runAckTitle) els.runAckTitle.textContent = title;
+    if (els.runAckDetail) els.runAckDetail.textContent = detail;
+    const canStop = state === 'running' || state === 'queued';
+    if (els.btnStopAck) els.btnStopAck.hidden = !canStop;
+    if (els.btnStopRun) els.btnStopRun.hidden = !canStop;
+  }
+
+  /**
+   * Scroll the script row into view, then scroll the Run log into view.
+   * @param {string | null} scriptName
+   */
+  function focusRunUi(scriptName) {
+    const row = scriptName
+      ? document.querySelector(
+          `.script-row[data-script="${CSS.escape(scriptName)}"]`
+        )
+      : null;
+    if (row) {
+      row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+    // After a short beat, bring the live log into view so the client sees output
+    window.setTimeout(() => {
+      const panel = document.querySelector('.log-panel');
+      if (panel) {
+        panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+      els.logView?.scrollTo?.({ top: els.logView.scrollHeight, behavior: 'smooth' });
+    }, 350);
   }
 
   /** Classify npm script group → ios | android | other. */
@@ -380,17 +533,20 @@
     }
     els.projectGrid.innerHTML = '';
     for (const p of projects) {
-      const [c1, c2, c3] = themeForId(p.id);
+      const theme = themeForId(p.id);
       const btn = document.createElement('button');
       btn.type = 'button';
       btn.className = 'project-card';
       if (p.id === selectedProjectId) btn.classList.add('active');
+      btn.style.setProperty('--card-ink', theme.ink);
+      btn.style.setProperty('--card-mid', theme.mid);
+      btn.style.setProperty('--card-accent', theme.accent);
+      btn.style.setProperty('--card-soft', theme.soft);
       btn.innerHTML = `
-        <div class="project-card-art" style="background:
-          radial-gradient(circle at 18% 30%, ${c3}aa, transparent 42%),
-          radial-gradient(circle at 78% 20%, ${c2}cc, transparent 48%),
-          linear-gradient(135deg, ${c1}, ${c2} 55%, ${c3});">
-          <span class="phone" aria-hidden="true"></span>
+        <div class="project-card-art" aria-hidden="true">
+          <span class="project-card-mesh"></span>
+          <span class="project-card-mark">${escapeHtml(theme.mark)}</span>
+          <span class="phone"></span>
         </div>
         <div class="project-card-body">
           <h3>${escapeHtml(p.displayName)}</h3>
@@ -431,9 +587,19 @@
     for (const r of reports) {
       const row = document.createElement('div');
       row.className = 'report-row';
+      const kindLabel =
+        r.kind === 'latest'
+          ? 'Latest'
+          : r.kind === 'archive'
+            ? 'Past run'
+            : r.kind === 'catalog'
+              ? 'Catalog'
+              : 'Report';
       row.innerHTML = `
         <div>
-          <p class="name">${escapeHtml(r.label || r.name)}</p>
+          <p class="name"><span class="report-kind report-kind--${escapeHtml(
+            r.kind || 'other'
+          )}">${escapeHtml(kindLabel)}</span> ${escapeHtml(r.label || r.name)}</p>
           <p class="when">${escapeHtml(
             r.mtime ? new Date(r.mtime).toLocaleString() : ''
           )} · ${escapeHtml(r.name)}</p>
@@ -572,7 +738,16 @@
 
   async function runScript(projectId, script) {
     if (!(await ensureAppiumForTests(script))) return;
-    cachedLogLines = [`Starting npm run ${script}…`];
+    activeScriptName = script;
+    setRunAck({
+      title: `Running: ${script}`,
+      detail: 'Script started — live steps appear below',
+      state: 'running',
+    });
+    setScriptRowState(script, 'running');
+    focusRunUi(script);
+    lastRunUiKey = '';
+    cachedLogLines = [`[CLIENT] Starting script: ${script}`];
     lastLineCount = 0;
     renderLogView();
     els.btnStopRun.hidden = false;
@@ -585,33 +760,71 @@
         body: JSON.stringify({ projectId, script }),
       });
       if (!result.ok) {
+        setRunAck({
+          title: 'Could not start',
+          detail: result.error || 'Request failed',
+          state: 'failed',
+        });
+        setScriptRowState(script, 'failed');
         alert(result.error || 'Could not start');
         return;
       }
       if (result.queued) {
+        setRunAck({
+          title: `Queued: ${script}`,
+          detail: `Waiting in queue (#${result.position})`,
+          state: 'queued',
+        });
+        setScriptRowState(script, 'queued');
         els.runMeta.textContent = `Queued (#${result.position}) · ${script}`;
+      } else {
+        setRunAck({
+          title: `Now running: ${script}`,
+          detail: `${projectId} · watch the log below`,
+          state: 'running',
+        });
+        setScriptRowState(script, 'running');
       }
       startRunPolling();
     } catch (err) {
+      setRunAck({
+        title: 'Could not start',
+        detail: String(err.message || err),
+        state: 'failed',
+      });
+      setScriptRowState(script, 'failed');
       alert(String(err.message || err));
     }
   }
 
   async function runSuite(projectId, suiteId) {
     if (!(await ensureAppiumForTests('test'))) return;
+    activeScriptName = suiteId;
+    setRunAck({
+      title: `Suite started: ${suiteId}`,
+      detail: 'One-click suite is running',
+      state: 'running',
+    });
+    focusRunUi(null);
     try {
       const result = await api('/api/run/suite', {
         method: 'POST',
         body: JSON.stringify({ projectId, suiteId }),
       });
       if (!result.ok) {
+        setRunAck({
+          title: 'Suite failed to start',
+          detail: result.error || '',
+          state: 'failed',
+        });
         alert(result.error || 'Suite failed to start');
         return;
       }
-      cachedLogLines = [`Suite ${suiteId} started…`];
+      cachedLogLines = [`[CLIENT] Suite started: ${suiteId}`];
       lastLineCount = 0;
       renderLogView();
       els.btnStopRun.hidden = false;
+      document.querySelector('.log-panel')?.classList.add('is-live');
       startRunPolling();
     } catch (err) {
       alert(String(err.message || err));
@@ -625,6 +838,19 @@
     );
     if (!scripts.length) return;
     if (!(await ensureAppiumForTests('test'))) return;
+    activeScriptName = scripts[0];
+    setRunAck({
+      title: `Running ${scripts.length} selected script(s)`,
+      detail: scripts.join(', '),
+      state: 'running',
+    });
+    setScriptRowState(scripts[0], 'running');
+    for (let i = 1; i < scripts.length; i++) {
+      document
+        .querySelector(`.script-row[data-script="${CSS.escape(scripts[i])}"]`)
+        ?.classList.add('is-queued');
+    }
+    focusRunUi(scripts[0]);
     try {
       const result = await api('/api/run/many', {
         method: 'POST',
@@ -633,7 +859,7 @@
       if (!result.ok) {
         alert('Some scripts could not be queued');
       }
-      cachedLogLines = [`Queued ${scripts.length} script(s)…`];
+      cachedLogLines = [`[CLIENT] Queued ${scripts.length} script(s)`];
       lastLineCount = 0;
       renderLogView();
       els.btnStopRun.hidden = false;
@@ -656,6 +882,44 @@
       const queue = data.queue || [];
       updateQueueUi(queue.length, run);
       if (!run) return;
+
+      activeScriptName = run.script || activeScriptName;
+      const uiKey = `${run.script}|${run.status}|${queue.length}|${run.exitCode ?? ''}`;
+      if (uiKey !== lastRunUiKey) {
+        lastRunUiKey = uiKey;
+        if (run.status === 'running') {
+          setRunAck({
+            title: `Now running: ${run.script}`,
+            detail: `${run.projectId}${
+              queue.length ? ` · ${queue.length} waiting in queue` : ''
+            }`,
+            state: 'running',
+          });
+          setScriptRowState(run.script, 'running');
+          for (const q of queue) {
+            document
+              .querySelector(
+                `.script-row[data-script="${CSS.escape(q.script)}"]`
+              )
+              ?.classList.add('is-queued');
+          }
+        } else {
+          const doneState =
+            run.status === 'passed' || run.exitCode === 0 ? 'passed' : 'failed';
+          setRunAck({
+            title:
+              doneState === 'passed'
+                ? `Finished: ${run.script}`
+                : `Failed: ${run.script}`,
+            detail: `${run.projectId} · ${run.status}${
+              queue.length ? ' · next in queue' : ''
+            }`,
+            state: doneState,
+          });
+          setScriptRowState(run.script, doneState);
+        }
+      }
+
       if (run.lines && run.lines.length !== lastLineCount) {
         cachedLogLines = run.lines.slice();
         renderLogView();
@@ -690,11 +954,52 @@
   }
 
   async function stopRun() {
+    if (els.btnStopAck) {
+      els.btnStopAck.disabled = true;
+      els.btnStopAck.textContent = 'Stopping…';
+    }
+    if (els.btnStopRun) {
+      els.btnStopRun.disabled = true;
+      els.btnStopRun.textContent = 'Stopping…';
+    }
+    setRunAck({
+      title: 'Stopping…',
+      detail: 'Killing npm / WebdriverIO process tree',
+      state: 'queued',
+    });
     try {
       await api('/api/run/stop', { method: 'POST', body: '{}' });
-      await pollRun();
+      setRunAck({
+        title: 'Stopped',
+        detail: 'Script stopped and queue cleared',
+        state: 'failed',
+      });
+      clearScriptRowStates();
+      lastRunUiKey = '';
+      // Pull final lines from server
+      const data = await api('/api/run');
+      if (data.run?.lines) {
+        cachedLogLines = data.run.lines.slice();
+        renderLogView();
+        lastLineCount = cachedLogLines.length;
+      }
+      if (runPoll) {
+        clearInterval(runPoll);
+        runPoll = null;
+      }
     } catch (err) {
       alert(String(err.message || err));
+    } finally {
+      if (els.btnStopAck) {
+        els.btnStopAck.disabled = false;
+        els.btnStopAck.textContent = 'Stop script';
+        els.btnStopAck.hidden = true;
+      }
+      if (els.btnStopRun) {
+        els.btnStopRun.disabled = false;
+        els.btnStopRun.textContent = 'Stop script';
+        els.btnStopRun.hidden = true;
+      }
     }
   }
 
@@ -755,7 +1060,12 @@
           a.href = h.primaryReportUrl;
           a.target = '_blank';
           a.rel = 'noopener';
-          a.textContent = 'Report';
+          // Archived snapshots keep this run's report; old entries may still point at latest
+          const isSnapshot = /-\d{8}-/.test(h.primaryReportUrl) || Boolean(h.archivedReportName);
+          a.textContent = isSnapshot ? 'This run' : 'Latest';
+          a.title = isSnapshot
+            ? 'Open the report saved for this run'
+            : 'Opens current latest report (no snapshot for older runs)';
           row.appendChild(a);
         }
         els.historyList.appendChild(row);
@@ -774,6 +1084,7 @@
   );
   els.btnBack.addEventListener('click', showProjects);
   els.btnStopRun.addEventListener('click', stopRun);
+  els.btnStopAck?.addEventListener('click', stopRun);
   els.btnRunSelected.addEventListener('click', runSelected);
   els.btnOpenShots.addEventListener('click', openShots);
   els.chkSelectAll.addEventListener('change', () => {
@@ -786,6 +1097,8 @@
   els.btnClearLog.addEventListener('click', () => {
     cachedLogLines = [];
     lastLineCount = 0;
+    clearScriptRowStates();
+    setRunAck({ title: 'Ready', detail: 'Log cleared', state: 'idle', show: false });
     els.logView.textContent =
       logMode === 'client'
         ? 'Log cleared. Client steps will appear on the next run.'

@@ -13,3 +13,4 @@ projects/*/reports/.vetpal-report-*
 projects/*/screenshots/*.png
 /vetpal-report.html
 *.zip
+dashboard/data/run-history.json
