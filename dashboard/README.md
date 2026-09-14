@@ -47,6 +47,21 @@ The wizard is **interactive** (device, Team ID, credentials), so Control Desk do
 
 Same as the CLI docs in `SETUP.md`.
 
+### Another Mac shows Setup **404**?
+
+That is **not** Terminal permission. It means the browser loaded newer UI while Node is still an **old** `dashboard` process (or the repo was not pulled).
+
+On the other Mac:
+
+```bash
+cd /path/to/automation_for_mobile_2026
+git pull
+# stop anything on 3939, then:
+npm run dashboard
+```
+
+Hard-refresh the browser (Cmd+Shift+R). Allow Terminal when macOS asks — if you deny Automation, use **Copy command** and paste into Terminal; that still works without the button.
+
 ## Optional env
 
 ```bash

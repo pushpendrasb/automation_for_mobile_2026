@@ -570,6 +570,17 @@ body.theme-dark .setup-note {
   margin-bottom: 0;
 }
 
+.setup-error {
+  margin: 0;
+  padding: 0.85rem 1rem;
+  border-radius: 12px;
+  border: 1px solid color-mix(in srgb, #dc2626 40%, var(--line));
+  background: color-mix(in srgb, #dc2626 10%, transparent);
+  color: var(--ink);
+  font-size: 0.88rem;
+  line-height: 1.45;
+}
+
 .eyebrow,
 .section-label {
   margin: 0;

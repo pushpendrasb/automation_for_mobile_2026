@@ -98,7 +98,18 @@
       ...options,
     });
     const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`);
+    if (!res.ok) {
+      // 404 on Setup = other Mac still running an old dashboard process (UI cached, APIs missing)
+      if (
+        res.status === 404 &&
+        (path === '/api/setup' || path.startsWith('/api/setup/'))
+      ) {
+        throw new Error(
+          'Setup API missing (404). On that Mac: git pull, stop the old dashboard (Ctrl+C), then run npm run dashboard again. Terminal permission is unrelated to this error.'
+        );
+      }
+      throw new Error(data.error || `Request failed (${res.status})`);
+    }
     return data;
   }
 
@@ -257,9 +268,27 @@
       const data = await api('/api/setup');
       renderSetup(data);
     } catch (err) {
-      els.setupChecks.innerHTML = `<p class="muted">${escapeHtml(
-        err.message || 'Could not load setup status'
-      )}</p>`;
+      const msg = err.message || 'Could not load setup status';
+      els.setupChecks.innerHTML = `<p class="setup-error">${escapeHtml(msg)}</p>
+        <ol class="setup-after">
+          <li><code>cd</code> into the repo on that Mac</li>
+          <li><code>git pull</code> (must include Setup APIs)</li>
+          <li>Stop any old dashboard (Ctrl+C / kill port 3939)</li>
+          <li>Run <code>npm run dashboard</code> and hard-refresh the browser</li>
+          <li>Or skip the button: open Terminal and run <code>bash scripts/bootstrap.sh</code></li>
+        </ol>`;
+    }
+  }
+
+  /**
+   * Warn if the HTML is new but the Node process is old (common after sharing the repo).
+   */
+  async function warnIfStaleDashboard() {
+    try {
+      const health = await api('/api/health');
+      if (health?.features?.setup) return;
+    } catch {
+      /* older builds may lack features; fall through to setup check */
     }
   }
 
@@ -282,9 +311,10 @@
         els.setupCmdHint.textContent = result.command;
       }
       if (!result.ok) {
+        // Permission deny ≠ 404 — still show the exact command to paste
         alert(
           (result.error || 'Could not open Terminal') +
-            '\n\nRun this yourself:\n' +
+            '\n\nPaste this in Terminal yourself:\n' +
             (result.command || '')
         );
         return;
@@ -1277,6 +1307,7 @@
   applyTheme(localStorage.getItem(LS_THEME) === 'dark' ? 'dark' : 'light');
   setLogMode(logMode);
   setSetupCollapsed(localStorage.getItem(LS_SETUP_COLLAPSED) === '1');
+  warnIfStaleDashboard();
   refreshSetup();
   refreshAppium();
   refreshDevices('');

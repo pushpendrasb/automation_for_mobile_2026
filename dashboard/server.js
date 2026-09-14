@@ -1076,24 +1076,26 @@ function openSetupInTerminal(mode = 'bootstrap') {
 
   // AppleScript string escaping for do script "..."
   const escaped = command.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+  // Wait for osascript so Automation / Terminal permission failures are visible
+  // (not a silent "ok" while the other Mac shows a deny dialog).
   try {
-    spawn(
-      'osascript',
-      [
-        '-e',
-        'tell application "Terminal" to activate',
-        '-e',
-        `tell application "Terminal" to do script "${escaped}"`,
-      ],
-      { stdio: 'ignore', detached: true }
-    ).unref();
+    execSync(
+      `osascript -e 'tell application "Terminal" to activate' -e 'tell application "Terminal" to do script "${escaped}"'`,
+      { encoding: 'utf8', timeout: 20000, stdio: ['ignore', 'pipe', 'pipe'] }
+    );
     return { ok: true, command, mode };
   } catch (err) {
+    const detail = String(err.stderr || err.message || err).trim();
     return {
       ok: false,
-      error: String(err.message || err),
+      error:
+        'Could not control Terminal (often macOS Automation permission). ' +
+        'System Settings → Privacy & Security → Automation → allow Terminal for Node, ' +
+        'or paste the command into Terminal yourself. ' +
+        (detail ? `(${detail.slice(0, 180)})` : ''),
       command,
       mode,
+      permissionHint: true,
     };
   }
 }
@@ -1151,7 +1153,14 @@ const server = http.createServer(async (req, res) => {
 
   try {
     if (method === 'GET' && pathname === '/api/health') {
-      return json(res, { ok: true, root: ROOT, host: HOST, port: PORT });
+      return json(res, {
+        ok: true,
+        root: ROOT,
+        host: HOST,
+        port: PORT,
+        /** Lets the UI detect a stale dashboard process (old code without Setup APIs). */
+        features: { setup: true },
+      });
     }
 
     if (method === 'GET' && pathname === '/api/appium') {
