@@ -105,7 +105,7 @@
         (path === '/api/setup' || path.startsWith('/api/setup/'))
       ) {
         throw new Error(
-          'Setup API missing (404). On that Mac: git pull, stop the old dashboard (Ctrl+C), then run npm run dashboard again. Terminal permission is unrelated to this error.'
+          'Setup API missing (404): an OLD dashboard process is still on port 3939 (new UI loaded from disk, old Node in memory). Fix: lsof -ti:3939 | xargs kill -9 && git pull && npm run dashboard — then hard-refresh. Terminal permission is unrelated.'
         );
       }
       throw new Error(data.error || `Request failed (${res.status})`);
@@ -271,11 +271,11 @@
       const msg = err.message || 'Could not load setup status';
       els.setupChecks.innerHTML = `<p class="setup-error">${escapeHtml(msg)}</p>
         <ol class="setup-after">
-          <li><code>cd</code> into the repo on that Mac</li>
-          <li><code>git pull</code> (must include Setup APIs)</li>
-          <li>Stop any old dashboard (Ctrl+C / kill port 3939)</li>
-          <li>Run <code>npm run dashboard</code> and hard-refresh the browser</li>
-          <li>Or skip the button: open Terminal and run <code>bash scripts/bootstrap.sh</code></li>
+          <li>In Terminal: <code>lsof -ti:3939 | xargs kill -9</code></li>
+          <li><code>cd</code> into the repo → <code>git pull</code></li>
+          <li>Run <code>npm run dashboard</code> (this now kills the old process first)</li>
+          <li>Hard-refresh the browser (Cmd+Shift+R)</li>
+          <li>Or skip the button: <code>bash scripts/bootstrap.sh</code></li>
         </ol>`;
     }
   }

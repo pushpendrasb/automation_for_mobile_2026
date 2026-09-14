@@ -49,16 +49,18 @@ Same as the CLI docs in `SETUP.md`.
 
 ### Another Mac shows Setup **404**?
 
-That is **not** Terminal permission. It means the browser loaded newer UI while Node is still an **old** `dashboard` process (or the repo was not pulled).
+**Cause:** An old Node process is still listening on port **3939**. The browser loads the new HTML/JS from disk, but the process in memory has no `/api/setup` routes. Re-opening Control Desk used to reuse that old process if the port was already up.
 
-On the other Mac:
+**Fix on that Mac:**
 
 ```bash
+lsof -ti:3939 | xargs kill -9
 cd /path/to/automation_for_mobile_2026
 git pull
-# stop anything on 3939, then:
 npm run dashboard
 ```
+
+`npm run dashboard` now frees port 3939 before start. Control Desk.app / launch script also restarts automatically when `/api/setup` is missing.
 
 Hard-refresh the browser (Cmd+Shift+R). Allow Terminal when macOS asks — if you deny Automation, use **Copy command** and paste into Terminal; that still works without the button.
 
