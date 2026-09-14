@@ -88,7 +88,7 @@
     </section>
 
     <main class="layout">
-      <section class="panel setup-panel full-bleed" id="setupPanel">
+      <section class="panel setup-panel full-bleed is-collapsed" id="setupPanel">
         <div class="panel-head row">
           <div>
             <p class="eyebrow">First-time / new Mac</p>
@@ -97,8 +97,8 @@
               Same as <code>bash scripts/bootstrap.sh</code> — opens Terminal for the interactive wizard
             </p>
           </div>
-          <button type="button" class="btn btn-ghost" id="btnSetupToggle" aria-expanded="true">
-            Hide steps
+          <button type="button" class="btn btn-ghost" id="btnSetupToggle" aria-expanded="false">
+            Show steps
           </button>
         </div>
 
@@ -108,7 +108,7 @@
           </div>
 
           <div class="setup-actions">
-            <button type="button" class="btn btn-primary" id="btnSetupBootstrap">
+            <button type="button" class="btn btn-ghost" id="btnSetupBootstrap">
               Run bootstrap
             </button>
             <button type="button" class="btn btn-ghost" id="btnSetupNpm">

@@ -492,6 +492,15 @@ body.theme-dark .setup-check[data-ok='false'] .setup-check-mark {
   align-items: center;
 }
 
+.setup-actions .btn:focus {
+  outline: none;
+}
+
+.setup-actions .btn:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent, #0d9488) 70%, transparent);
+  outline-offset: 2px;
+}
+
 .setup-cmd {
   margin: 0;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;

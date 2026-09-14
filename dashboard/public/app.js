@@ -14,6 +14,8 @@
 
   /** @type {object | null} */
   let setupCache = null;
+  /** User/server pick for which setup action is highlighted: 'bootstrap' | 'setup' */
+  let setupActionMode = null;
 
   const els = {
     appiumDot: $('appiumDot'),
@@ -194,15 +196,46 @@
   }
 
   /**
+   * Only one of Run bootstrap / Run npm setup is primary.
+   * Copy + Refresh stay ghost so focus/click never makes them look “selected”.
+   * @param {'bootstrap' | 'setup'} mode
+   */
+  function setSetupActionMode(mode) {
+    setupActionMode = mode === 'bootstrap' ? 'bootstrap' : 'setup';
+    const pair = [els.btnSetupBootstrap, els.btnSetupNpm];
+    for (const btn of pair) {
+      if (!btn) continue;
+      btn.classList.remove('btn-primary', 'is-setup-active');
+      btn.classList.add('btn-ghost');
+      btn.setAttribute('aria-pressed', 'false');
+    }
+    // Utility buttons must never carry primary styling
+    for (const btn of [els.btnSetupCopy, els.btnSetupRefresh]) {
+      if (!btn) continue;
+      btn.classList.remove('btn-primary', 'is-setup-active');
+      btn.classList.add('btn-ghost');
+    }
+    const active =
+      setupActionMode === 'bootstrap' ? els.btnSetupBootstrap : els.btnSetupNpm;
+    if (active) {
+      active.classList.remove('btn-ghost');
+      active.classList.add('btn-primary', 'is-setup-active');
+      active.setAttribute('aria-pressed', 'true');
+    }
+    if (setupCache && els.setupCmdHint) {
+      els.setupCmdHint.textContent =
+        setupActionMode === 'bootstrap'
+          ? setupCache.fullBootstrap
+          : setupCache.fullSetup;
+    }
+  }
+
+  /**
    * Render machine checks + guided bootstrap steps from /api/setup.
    * @param {object} data
    */
   function renderSetup(data) {
     setupCache = data;
-    const preferred = data.recommendBootstrap
-      ? data.fullBootstrap
-      : data.fullSetup;
-    if (els.setupCmdHint) els.setupCmdHint.textContent = preferred;
 
     if (!els.setupChecks) return;
     els.setupChecks.innerHTML = '';
@@ -240,20 +273,11 @@
       }
     }
 
-    if (els.btnSetupBootstrap && els.btnSetupNpm) {
-      els.btnSetupBootstrap.classList.toggle(
-        'btn-primary',
-        Boolean(data.recommendBootstrap)
-      );
-      els.btnSetupNpm.classList.toggle('btn-primary', !data.recommendBootstrap);
-      if (data.recommendBootstrap) {
-        els.btnSetupNpm.classList.add('btn-ghost');
-        els.btnSetupBootstrap.classList.remove('btn-ghost');
-      } else {
-        els.btnSetupBootstrap.classList.add('btn-ghost');
-        els.btnSetupNpm.classList.remove('btn-ghost');
-      }
+    // First load: pick recommended. Later Refresh keeps the user's last choice.
+    if (!setupActionMode) {
+      setupActionMode = data.recommendBootstrap ? 'bootstrap' : 'setup';
     }
+    setSetupActionMode(setupActionMode);
 
     if (els.setupNote) {
       els.setupNote.innerHTML = data.recommendBootstrap
@@ -302,6 +326,7 @@
   }
 
   async function openSetupTerminal(mode) {
+    setSetupActionMode(mode === 'setup' ? 'setup' : 'bootstrap');
     try {
       const result = await api('/api/setup/open-terminal', {
         method: 'POST',
@@ -327,13 +352,18 @@
       });
     } catch (err) {
       alert(String(err.message || err));
+    } finally {
+      // Drop focus ring so the clicked button does not look “stuck selected”
+      if (document.activeElement instanceof HTMLElement) {
+        document.activeElement.blur();
+      }
     }
   }
 
   async function copySetupCommand() {
     const cmd =
       (setupCache &&
-        (setupCache.recommendBootstrap
+        (setupActionMode === 'bootstrap'
           ? setupCache.fullBootstrap
           : setupCache.fullSetup)) ||
       els.setupCmdHint?.textContent ||
@@ -349,6 +379,10 @@
       });
     } catch {
       prompt('Copy this command:', cmd);
+    } finally {
+      if (document.activeElement instanceof HTMLElement) {
+        document.activeElement.blur();
+      }
     }
   }
 
@@ -1302,11 +1336,17 @@
   els.btnSetupBootstrap?.addEventListener('click', () => openSetupTerminal('bootstrap'));
   els.btnSetupNpm?.addEventListener('click', () => openSetupTerminal('setup'));
   els.btnSetupCopy?.addEventListener('click', copySetupCommand);
-  els.btnSetupRefresh?.addEventListener('click', refreshSetup);
+  els.btnSetupRefresh?.addEventListener('click', async () => {
+    await refreshSetup();
+    if (document.activeElement instanceof HTMLElement) {
+      document.activeElement.blur();
+    }
+  });
 
   applyTheme(localStorage.getItem(LS_THEME) === 'dark' ? 'dark' : 'light');
   setLogMode(logMode);
-  setSetupCollapsed(localStorage.getItem(LS_SETUP_COLLAPSED) === '1');
+  // Always start with Setup collapsed; user clicks “Show steps” to expand.
+  setSetupCollapsed(true);
   warnIfStaleDashboard();
   refreshSetup();
   refreshAppium();
