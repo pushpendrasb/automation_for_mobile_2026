@@ -398,6 +398,178 @@ a.btn {
   margin-bottom: 1.15rem;
 }
 
+/* —— Setup / bootstrap panel —— */
+.setup-panel {
+  border-color: color-mix(in srgb, var(--accent, #0d9488) 35%, var(--line));
+}
+
+.setup-panel .eyebrow {
+  margin: 0 0 0.2rem;
+  font-size: 0.7rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.setup-panel code {
+  font-size: 0.85em;
+  padding: 0.1em 0.35em;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--ink) 6%, transparent);
+}
+
+.setup-body {
+  display: grid;
+  gap: 1rem;
+}
+
+.setup-checks {
+  display: grid;
+  gap: 0.55rem;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+}
+
+.setup-check {
+  display: flex;
+  gap: 0.65rem;
+  align-items: flex-start;
+  padding: 0.7rem 0.85rem;
+  border-radius: 14px;
+  border: 1px solid var(--line);
+  background: color-mix(in srgb, var(--card-bg, var(--panel)) 80%, transparent);
+}
+
+.setup-check-mark {
+  width: 1.35rem;
+  height: 1.35rem;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  font-size: 0.75rem;
+  font-weight: 800;
+  flex-shrink: 0;
+  margin-top: 0.1rem;
+}
+
+.setup-check[data-ok='true'] .setup-check-mark {
+  background: #bbf7d0;
+  color: #14532d;
+}
+
+.setup-check[data-ok='false'] .setup-check-mark {
+  background: #fed7aa;
+  color: #9a3412;
+}
+
+body.theme-dark .setup-check[data-ok='true'] .setup-check-mark {
+  background: #14532d;
+  color: #bbf7d0;
+}
+
+body.theme-dark .setup-check[data-ok='false'] .setup-check-mark {
+  background: #7c2d12;
+  color: #fed7aa;
+}
+
+.setup-check strong {
+  display: block;
+  font-size: 0.88rem;
+}
+
+.setup-check span {
+  display: block;
+  margin-top: 0.15rem;
+  font-size: 0.78rem;
+  color: var(--muted);
+  line-height: 1.35;
+}
+
+.setup-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+  align-items: center;
+}
+
+.setup-cmd {
+  margin: 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.78rem;
+  word-break: break-all;
+}
+
+.setup-note {
+  margin: 0;
+  padding: 0.85rem 1rem;
+  border-radius: 12px;
+  border: 1px dashed var(--line);
+  font-size: 0.88rem;
+  line-height: 1.45;
+  color: var(--ink);
+  background: color-mix(in srgb, #f97316 8%, transparent);
+}
+
+body.theme-dark .setup-note {
+  background: color-mix(in srgb, #f97316 14%, transparent);
+}
+
+.setup-steps {
+  margin: 0;
+  padding: 0 0 0 1.25rem;
+  display: grid;
+  gap: 0.75rem;
+}
+
+.setup-steps li {
+  padding-left: 0.35rem;
+}
+
+.setup-steps strong {
+  display: block;
+  margin-bottom: 0.2rem;
+  font-size: 0.95rem;
+}
+
+.setup-steps p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.88rem;
+  line-height: 1.4;
+}
+
+.setup-details {
+  border-top: 1px solid var(--line);
+  padding-top: 0.75rem;
+}
+
+.setup-details summary {
+  cursor: pointer;
+  font-weight: 650;
+  font-size: 0.9rem;
+}
+
+.setup-details ul,
+.setup-after {
+  margin: 0.65rem 0 0;
+  padding-left: 1.2rem;
+  color: var(--muted);
+  font-size: 0.88rem;
+  line-height: 1.5;
+}
+
+.setup-details li + li {
+  margin-top: 0.35rem;
+}
+
+.setup-panel.is-collapsed .setup-body {
+  display: none;
+}
+
+.setup-panel.is-collapsed .panel-head.row {
+  margin-bottom: 0;
+}
+
 .eyebrow,
 .section-label {
   margin: 0;

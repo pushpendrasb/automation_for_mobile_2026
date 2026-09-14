@@ -17,6 +17,7 @@ All of these still work — use whichever you prefer:
 
 | Feature | What it does |
 |--------|----------------|
+| **Setup** | Live Mac checks + step-by-step guide · **Run bootstrap** opens Terminal with `bash scripts/bootstrap.sh` · **Run npm setup** for Node-already-installed · Copy command |
 | **Appium** | Status + version · Start / Stop |
 | **Devices** | Connected iOS / Android (refreshable) |
 | **Projects** | Cards for AppraiseeIE, VetPal, RosKids… |
@@ -32,6 +33,19 @@ All of these still work — use whichever you prefer:
 | **History** | Last 25 runs; each finished run archives its own HTML report snapshot |
 | **Theme** | Light / Dark (remembered) |
 | **Last project** | Reopens the project you used last |
+
+### Setup on the dashboard
+
+The wizard is **interactive** (device, Team ID, credentials), so Control Desk does **not** run it inside the browser. It:
+
+1. Shows readiness checks (Homebrew, Node ≥ 18, Xcode, Appium, project `.env`)
+2. Explains what bootstrap does and what the wizard will ask
+3. Opens **Terminal.app** with either:
+   - `bash scripts/bootstrap.sh` (fresh Mac — installs Homebrew/Node if needed)
+   - `npm run setup` (Node already present)
+4. You answer prompts in Terminal, then click **Refresh checks** and use Projects / Appium as usual
+
+Same as the CLI docs in `SETUP.md`.
 
 ## Optional env
 

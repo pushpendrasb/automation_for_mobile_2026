@@ -23,7 +23,7 @@
       <div class="brand">
         <p class="brand-mark">Mobile Automation</p>
         <h1>Control Desk</h1>
-        <p class="tagline">Appium · devices · projects · reports · one click</p>
+        <p class="tagline">Setup · Appium · devices · projects · reports · one click</p>
       </div>
       <div class="header-actions">
         <button type="button" class="btn btn-ghost" id="btnTheme" title="Toggle theme">
@@ -88,6 +88,64 @@
     </section>
 
     <main class="layout">
+      <section class="panel setup-panel full-bleed" id="setupPanel">
+        <div class="panel-head row">
+          <div>
+            <p class="eyebrow">First-time / new Mac</p>
+            <h2>Setup</h2>
+            <p class="muted">
+              Same as <code>bash scripts/bootstrap.sh</code> — opens Terminal for the interactive wizard
+            </p>
+          </div>
+          <button type="button" class="btn btn-ghost" id="btnSetupToggle" aria-expanded="true">
+            Hide steps
+          </button>
+        </div>
+
+        <div class="setup-body" id="setupBody">
+          <div class="setup-checks" id="setupChecks">
+            <p class="muted">Checking this Mac…</p>
+          </div>
+
+          <div class="setup-actions">
+            <button type="button" class="btn btn-primary" id="btnSetupBootstrap">
+              Run bootstrap
+            </button>
+            <button type="button" class="btn btn-ghost" id="btnSetupNpm">
+              Run npm setup
+            </button>
+            <button type="button" class="btn btn-ghost" id="btnSetupCopy">
+              Copy command
+            </button>
+            <button type="button" class="btn btn-ghost" id="btnSetupRefresh">
+              Refresh checks
+            </button>
+          </div>
+          <p class="setup-cmd muted" id="setupCmdHint"></p>
+          <p class="setup-note" id="setupNote">
+            The wizard asks questions in <strong>Terminal</strong> (device, Team ID, credentials). The
+            browser cannot answer those prompts — use the buttons above to open Terminal, then follow
+            the steps.
+          </p>
+
+          <ol class="setup-steps" id="setupSteps"></ol>
+
+          <details class="setup-details">
+            <summary>What the wizard asks</summary>
+            <ul id="setupWizardAsks"></ul>
+          </details>
+
+          <details class="setup-details">
+            <summary>After setup — run tests from here</summary>
+            <ol class="setup-after">
+              <li>Click <strong>Start Appium</strong> in the header (wait until it shows online).</li>
+              <li>Plug in / unlock your device or start a simulator, then <strong>Refresh devices</strong>.</li>
+              <li>Open a project card below and run a smoke or sign-in suite.</li>
+            </ol>
+          </details>
+        </div>
+      </section>
+
       <section class="panel projects-panel full-bleed">
         <div class="panel-head row">
           <div>

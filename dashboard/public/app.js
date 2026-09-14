@@ -10,6 +10,10 @@
   const LS_THEME = 'automation-dashboard-theme';
   const LS_PROJECT = 'automation-dashboard-last-project';
   const LS_LOG_MODE = 'automation-dashboard-log-mode';
+  const LS_SETUP_COLLAPSED = 'automation-dashboard-setup-collapsed';
+
+  /** @type {object | null} */
+  let setupCache = null;
 
   const els = {
     appiumDot: $('appiumDot'),
@@ -60,6 +64,18 @@
     runAckDetail: $('runAckDetail'),
     historyList: $('historyList'),
     footHint: $('footHint'),
+    setupPanel: $('setupPanel'),
+    setupBody: $('setupBody'),
+    setupChecks: $('setupChecks'),
+    setupSteps: $('setupSteps'),
+    setupWizardAsks: $('setupWizardAsks'),
+    setupCmdHint: $('setupCmdHint'),
+    setupNote: $('setupNote'),
+    btnSetupToggle: $('btnSetupToggle'),
+    btnSetupBootstrap: $('btnSetupBootstrap'),
+    btnSetupNpm: $('btnSetupNpm'),
+    btnSetupCopy: $('btnSetupCopy'),
+    btnSetupRefresh: $('btnSetupRefresh'),
   };
 
   let selectedProjectId = null;
@@ -164,6 +180,146 @@
     document.body.classList.toggle('theme-dark', theme === 'dark');
     localStorage.setItem(LS_THEME, theme);
     els.btnTheme.textContent = theme === 'dark' ? 'Light' : 'Dark';
+  }
+
+  /**
+   * Render machine checks + guided bootstrap steps from /api/setup.
+   * @param {object} data
+   */
+  function renderSetup(data) {
+    setupCache = data;
+    const preferred = data.recommendBootstrap
+      ? data.fullBootstrap
+      : data.fullSetup;
+    if (els.setupCmdHint) els.setupCmdHint.textContent = preferred;
+
+    if (!els.setupChecks) return;
+    els.setupChecks.innerHTML = '';
+    for (const c of data.checks || []) {
+      const row = document.createElement('div');
+      row.className = 'setup-check';
+      row.dataset.ok = c.ok ? 'true' : 'false';
+      row.innerHTML = `
+        <span class="setup-check-mark" aria-hidden="true">${c.ok ? '✓' : '!'}</span>
+        <div>
+          <strong>${escapeHtml(c.label)}</strong>
+          <span>${escapeHtml(c.detail || '')}</span>
+        </div>
+      `;
+      els.setupChecks.appendChild(row);
+    }
+
+    if (els.setupSteps) {
+      els.setupSteps.innerHTML = '';
+      (data.steps || []).forEach((step, i) => {
+        const li = document.createElement('li');
+        li.innerHTML = `<strong>${i + 1}. ${escapeHtml(step.title)}</strong><p>${escapeHtml(
+          step.body
+        )}</p>`;
+        els.setupSteps.appendChild(li);
+      });
+    }
+
+    if (els.setupWizardAsks) {
+      els.setupWizardAsks.innerHTML = '';
+      for (const ask of data.wizardAsks || []) {
+        const li = document.createElement('li');
+        li.textContent = ask;
+        els.setupWizardAsks.appendChild(li);
+      }
+    }
+
+    if (els.btnSetupBootstrap && els.btnSetupNpm) {
+      els.btnSetupBootstrap.classList.toggle(
+        'btn-primary',
+        Boolean(data.recommendBootstrap)
+      );
+      els.btnSetupNpm.classList.toggle('btn-primary', !data.recommendBootstrap);
+      if (data.recommendBootstrap) {
+        els.btnSetupNpm.classList.add('btn-ghost');
+        els.btnSetupBootstrap.classList.remove('btn-ghost');
+      } else {
+        els.btnSetupBootstrap.classList.add('btn-ghost');
+        els.btnSetupNpm.classList.remove('btn-ghost');
+      }
+    }
+
+    if (els.setupNote) {
+      els.setupNote.innerHTML = data.recommendBootstrap
+        ? 'Fresh Mac tip: use <strong>Run bootstrap</strong> (same as <code>bash scripts/bootstrap.sh</code>). Answer prompts in the Terminal window that opens.'
+        : 'Node looks ready. Use <strong>Run npm setup</strong> for the wizard, or bootstrap if you prefer the full script. Answer prompts in Terminal.';
+    }
+  }
+
+  async function refreshSetup() {
+    if (!els.setupChecks) return;
+    try {
+      const data = await api('/api/setup');
+      renderSetup(data);
+    } catch (err) {
+      els.setupChecks.innerHTML = `<p class="muted">${escapeHtml(
+        err.message || 'Could not load setup status'
+      )}</p>`;
+    }
+  }
+
+  function setSetupCollapsed(collapsed) {
+    els.setupPanel?.classList.toggle('is-collapsed', collapsed);
+    if (els.btnSetupToggle) {
+      els.btnSetupToggle.textContent = collapsed ? 'Show steps' : 'Hide steps';
+      els.btnSetupToggle.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+    }
+    localStorage.setItem(LS_SETUP_COLLAPSED, collapsed ? '1' : '0');
+  }
+
+  async function openSetupTerminal(mode) {
+    try {
+      const result = await api('/api/setup/open-terminal', {
+        method: 'POST',
+        body: JSON.stringify({ mode }),
+      });
+      if (result.command && els.setupCmdHint) {
+        els.setupCmdHint.textContent = result.command;
+      }
+      if (!result.ok) {
+        alert(
+          (result.error || 'Could not open Terminal') +
+            '\n\nRun this yourself:\n' +
+            (result.command || '')
+        );
+        return;
+      }
+      setRunAck({
+        title: mode === 'setup' ? 'Setup opened in Terminal' : 'Bootstrap opened in Terminal',
+        detail: 'Answer the wizard questions there, then refresh checks here',
+        state: 'idle',
+        show: true,
+      });
+    } catch (err) {
+      alert(String(err.message || err));
+    }
+  }
+
+  async function copySetupCommand() {
+    const cmd =
+      (setupCache &&
+        (setupCache.recommendBootstrap
+          ? setupCache.fullBootstrap
+          : setupCache.fullSetup)) ||
+      els.setupCmdHint?.textContent ||
+      '';
+    if (!cmd) return;
+    try {
+      await navigator.clipboard.writeText(cmd);
+      setRunAck({
+        title: 'Command copied',
+        detail: cmd,
+        state: 'idle',
+        show: true,
+      });
+    } catch {
+      prompt('Copy this command:', cmd);
+    }
   }
 
   function toggleTheme() {
@@ -1110,8 +1266,18 @@
   els.btnLogClient?.addEventListener('click', () => setLogMode('client'));
   els.btnLogFull?.addEventListener('click', () => setLogMode('full'));
 
+  els.btnSetupToggle?.addEventListener('click', () => {
+    setSetupCollapsed(!els.setupPanel.classList.contains('is-collapsed'));
+  });
+  els.btnSetupBootstrap?.addEventListener('click', () => openSetupTerminal('bootstrap'));
+  els.btnSetupNpm?.addEventListener('click', () => openSetupTerminal('setup'));
+  els.btnSetupCopy?.addEventListener('click', copySetupCommand);
+  els.btnSetupRefresh?.addEventListener('click', refreshSetup);
+
   applyTheme(localStorage.getItem(LS_THEME) === 'dark' ? 'dark' : 'light');
   setLogMode(logMode);
+  setSetupCollapsed(localStorage.getItem(LS_SETUP_COLLAPSED) === '1');
+  refreshSetup();
   refreshAppium();
   refreshDevices('');
   loadHistory();

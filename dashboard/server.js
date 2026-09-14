@@ -1,8 +1,9 @@
 /**
  * Automation Control Dashboard — local one-click runner.
  *
- * Features: Appium status/start/stop, projects, scripts, live logs, reports,
- * devices, env checks, run queue, history, suites, screenshots, multi-run.
+ * Features: Appium status/start/stop, setup/bootstrap guide, projects, scripts,
+ * live logs, reports, devices, env checks, run queue, history, suites,
+ * screenshots, multi-run.
  *
  *   npm run dashboard  →  http://127.0.0.1:3939
  */
@@ -912,6 +913,191 @@ function openScreenshots(projectId) {
   }
 }
 
+/**
+ * Soft tool check for the Setup panel (does not install anything).
+ * @param {string} cmd
+ * @returns {{ ok: boolean, detail: string }}
+ */
+function softCmdCheck(cmd) {
+  try {
+    const out = execSync(cmd, {
+      encoding: 'utf8',
+      timeout: 8000,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    })
+      .trim()
+      .split('\n')[0];
+    return { ok: true, detail: out || 'OK' };
+  } catch {
+    return { ok: false, detail: 'Not found' };
+  }
+}
+
+/**
+ * Machine readiness + guided steps for fresh-Mac bootstrap.
+ * Wizard is interactive → dashboard opens Terminal; it does not answer prompts in the browser.
+ */
+function getSetupStatus() {
+  const brew = softCmdCheck('brew --version');
+  const node = softCmdCheck('node -v');
+  const npm = softCmdCheck('npm -v');
+  const xcode = softCmdCheck('xcodebuild -version');
+  const appium = softCmdCheck('appium -v');
+
+  let nodeOk = node.ok;
+  if (node.ok) {
+    const major = Number(String(node.detail).replace(/^v/, '').split('.')[0]);
+    if (!Number.isFinite(major) || major < 18) {
+      nodeOk = false;
+      node.detail = `${node.detail} (need ≥ 18)`;
+    }
+  }
+
+  const projects = listProjects().map((p) => {
+    const envPath = path.join(PROJECTS_DIR, p.id, '.env');
+    const hasEnv = fs.existsSync(envPath);
+    return { id: p.id, name: p.displayName || p.id, hasEnv };
+  });
+  const projectsWithEnv = projects.filter((p) => p.hasEnv).length;
+
+  const checks = [
+    {
+      id: 'brew',
+      label: 'Homebrew',
+      ok: brew.ok,
+      detail: brew.ok ? brew.detail : 'Missing — bootstrap installs it',
+    },
+    {
+      id: 'node',
+      label: 'Node.js ≥ 18',
+      ok: nodeOk,
+      detail: node.ok ? node.detail : 'Missing — bootstrap installs it',
+    },
+    {
+      id: 'npm',
+      label: 'npm',
+      ok: npm.ok,
+      detail: npm.ok ? npm.detail : 'Comes with Node',
+    },
+    {
+      id: 'xcode',
+      label: 'Xcode / xcodebuild',
+      ok: xcode.ok,
+      detail: xcode.ok
+        ? xcode.detail
+        : 'Install from App Store, then open Xcode once',
+    },
+    {
+      id: 'appium',
+      label: 'Appium CLI',
+      ok: appium.ok,
+      detail: appium.ok ? `v${appium.detail}` : 'Wizard installs Appium + drivers',
+    },
+    {
+      id: 'projects',
+      label: 'Project .env files',
+      ok: projects.length > 0 && projectsWithEnv > 0,
+      detail:
+        projects.length === 0
+          ? 'No projects yet — create one in the wizard'
+          : `${projectsWithEnv}/${projects.length} configured`,
+    },
+  ];
+
+  const missingTools = checks.filter(
+    (c) => !c.ok && ['brew', 'node', 'npm'].includes(c.id)
+  ).length;
+  const recommendBootstrap = missingTools > 0 || !nodeOk;
+
+  return {
+    root: ROOT,
+    platform: process.platform,
+    recommendBootstrap,
+    bootstrapCommand: 'bash scripts/bootstrap.sh',
+    setupCommand: 'npm run setup',
+    fullBootstrap: `cd "${ROOT}" && bash scripts/bootstrap.sh`,
+    fullSetup: `cd "${ROOT}" && npm run setup`,
+    checks,
+    projects,
+    steps: [
+      {
+        title: 'Open setup in Terminal',
+        body: recommendBootstrap
+          ? 'Use Run bootstrap (recommended on a fresh Mac). It installs Homebrew + Node if needed, then starts the wizard.'
+          : 'Node is already available. You can run npm setup, or still use bootstrap — both end in the same wizard.',
+      },
+      {
+        title: 'Answer the wizard prompts',
+        body: 'Language → Appium drivers → existing or new project → iOS/Android/Both → bundle ID / package → device → Apple Team ID (real iPhone) → optional credentials.',
+      },
+      {
+        title: 'WebDriverAgent (real iPhone)',
+        body: 'Allow the wizard to build & install WDA when offered. Fix Development signing for your Team ID if that step fails, then re-run setup.',
+      },
+      {
+        title: 'Back to Control Desk',
+        body: 'Start Appium from the header, refresh Devices, open your project, then run a smoke or sign-in suite.',
+      },
+    ],
+    wizardAsks: [
+      'Script language (JavaScript / TypeScript / Python)',
+      'Install or verify Appium + XCUITest + UiAutomator2',
+      'Configure an existing project or create a new one',
+      'Platform: iOS / Android / Both',
+      'iOS bundle ID and/or Android package',
+      'App source path or git URL (optional)',
+      'Connected device + Apple Team ID (iOS real device)',
+      'Build WebDriverAgent on the phone',
+      'Test credentials (optional)',
+    ],
+  };
+}
+
+/**
+ * Open macOS Terminal in the repo and run bootstrap or setup.
+ * Interactive prompts must be answered in Terminal — not in the browser.
+ * @param {'bootstrap' | 'setup'} mode
+ */
+function openSetupInTerminal(mode = 'bootstrap') {
+  const command =
+    mode === 'setup'
+      ? `cd "${ROOT}" && npm run setup`
+      : `cd "${ROOT}" && bash scripts/bootstrap.sh`;
+
+  if (process.platform !== 'darwin') {
+    return {
+      ok: false,
+      error:
+        'Auto-open Terminal is macOS-only. Copy the command below and run it in your shell.',
+      command,
+      mode,
+    };
+  }
+
+  // AppleScript string escaping for do script "..."
+  const escaped = command.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+  try {
+    spawn(
+      'osascript',
+      [
+        '-e',
+        'tell application "Terminal" to activate',
+        '-e',
+        `tell application "Terminal" to do script "${escaped}"`,
+      ],
+      { stdio: 'ignore', detached: true }
+    ).unref();
+    return { ok: true, command, mode };
+  } catch (err) {
+    return {
+      ok: false,
+      error: String(err.message || err),
+      command,
+      mode,
+    };
+  }
+}
+
 function json(res, data, status = 200) {
   res.writeHead(status, {
     'Content-Type': 'application/json; charset=utf-8',
@@ -985,6 +1171,16 @@ const server = http.createServer(async (req, res) => {
 
     if (method === 'GET' && pathname === '/api/history') {
       return json(res, { history: loadHistory() });
+    }
+
+    if (method === 'GET' && pathname === '/api/setup') {
+      return json(res, getSetupStatus());
+    }
+
+    if (method === 'POST' && pathname === '/api/setup/open-terminal') {
+      const body = await readBody(req);
+      const mode = body.mode === 'setup' ? 'setup' : 'bootstrap';
+      return json(res, openSetupInTerminal(mode));
     }
 
     if (method === 'GET' && pathname === '/api/projects') {
