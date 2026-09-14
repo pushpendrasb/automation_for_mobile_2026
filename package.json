@@ -7,7 +7,9 @@
     "setup": "node scripts/setup-mac.js",
     "setup:bootstrap": "bash scripts/bootstrap.sh",
     "new-project": "node scripts/new-project.js",
-    "dashboard": "node dashboard/server.js"
+    "dashboard": "node dashboard/server.js",
+    "start": "node dashboard/server.js",
+    "desk": "node dashboard/server.js"
   },
   "engines": {
     "node": ">=18"

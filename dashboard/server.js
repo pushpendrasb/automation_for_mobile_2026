@@ -1105,9 +1105,12 @@ server.listen(PORT, HOST, () => {
       : process.platform === 'win32'
         ? 'start'
         : 'xdg-open';
-  try {
-    spawn(openCmd, [url], { stdio: 'ignore', detached: true }).unref();
-  } catch {
-    /* ignore */
+  // Skip auto-open when launched by Control Desk.app (it opens the browser itself)
+  if (!process.env.DASHBOARD_NO_OPEN) {
+    try {
+      spawn(openCmd, [url], { stdio: 'ignore', detached: true }).unref();
+    } catch {
+      /* ignore */
+    }
   }
 });

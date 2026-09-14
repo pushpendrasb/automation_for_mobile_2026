@@ -1,12 +1,17 @@
 # Automation Control Desk
 
-One-click graphical dashboard for this repo.
+## How to open
 
-```bash
-npm run dashboard
-```
+All of these still work — use whichever you prefer:
 
-Opens **http://127.0.0.1:3939**
+| Way | Command / action |
+|-----|------------------|
+| **Terminal (kept)** | `npm run dashboard` |
+| **Short aliases** | `npm start` or `npm run desk` |
+| **Click app (optional)** | Double-click **`Control Desk.app`** — starts server if needed + opens browser |
+| **URL / bookmark** | **http://127.0.0.1:3939** (server must already be running) |
+
+`npm run dashboard` is unchanged and fully supported.
 
 ## Features
 
