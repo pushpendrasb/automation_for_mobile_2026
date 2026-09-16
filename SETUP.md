@@ -97,6 +97,78 @@ If the **WebDriverAgent** step fails, fix Development signing for that Team ID a
 
 ---
 
+## Android real device — OEM-specific quirks
+
+Most Android phones need nothing beyond USB debugging + `adb devices` showing `device` (not `unauthorized`). A few OEMs need one extra step — check the section for your device brand.
+
+### "Neither ANDROID_HOME nor ANDROID_SDK_ROOT was exported"
+
+Session creation fails immediately with this error even though `adb devices` works fine from your own terminal. This means the **terminal running `appium`** doesn't have `ANDROID_HOME`/`ANDROID_SDK_ROOT` exported — usually because that terminal was already open before you added the exports to your shell profile (a stale terminal keeps its old environment).
+
+Run `npm run check:devices:android` — it now warns if these are missing in that shell, though passing there doesn't guarantee the `appium` terminal has them too.
+
+Fix, once per Mac:
+
+1. Add to **both** `~/.zshrc` and `~/.zprofile`:
+   ```bash
+   export ANDROID_HOME=$HOME/Library/Android/sdk
+   export ANDROID_SDK_ROOT=$ANDROID_HOME
+   export PATH=$PATH:$ANDROID_HOME/platform-tools:$ANDROID_HOME/emulator
+   ```
+2. Open a **brand-new** terminal window (don't reuse one that was already open).
+3. Confirm: `echo $ANDROID_HOME` prints the SDK path.
+4. Start (or restart) `appium` from that same new terminal.
+
+### Any brand — USB debugging authorization
+
+`adb devices` shows `unauthorized` → unlock the phone and tap **Allow** on the "Allow USB debugging?" popup (check "Always allow from this computer"). If no popup appears, toggle USB debugging off/on in Developer options, or run `adb kill-server && adb start-server` and replug the cable.
+
+### OnePlus / Oppo / Realme (ColorOS / OxygenOS 13+)
+
+These devices deny `WRITE_SECURE_SETTINGS` to `adb shell` by default, which fails session creation with:
+
+```
+Error executing adbExec ... settings delete global hidden_api_policy...
+Permission denial, must have one of: [android.permission.WRITE_SECURE_SETTINGS]
+```
+
+**Already fixed at the framework level** — `framework/config/android.config.js` sets `appium:ignoreHiddenApiPolicyError: true`, so this no longer blocks a session on any project. No action needed.
+
+If you ever want the OS-level fix instead: **Settings → System (or "Additional settings" on older UI) → Developer options → "Disable Permission Monitoring"** — near the bottom of the list; exact wording/location varies by OxygenOS version.
+
+These devices also run an aggressive background-process freezer that can kill the on-device UiAutomator2 test server mid-run:
+
+```
+'POST /elements' cannot be proxied to UiAutomator2 server because the instrumentation process is not running (probably crashed)
+```
+
+If you hit that, run once per device (survives until reboot):
+
+```bash
+adb shell dumpsys deviceidle whitelist +io.appium.uiautomator2.server
+adb shell dumpsys deviceidle whitelist +io.appium.uiautomator2.server.test
+adb shell dumpsys deviceidle whitelist +io.appium.settings
+adb shell dumpsys deviceidle whitelist +<your.app.package>   # e.g. ie.vetpal
+adb shell settings put global cached_apps_freezer disabled
+```
+
+### Samsung (One UI)
+
+Generally works with no extra steps — `WRITE_SECURE_SETTINGS` isn't restricted the way ColorOS restricts it. If the instrumentation dies mid-test, check **Settings → Battery and device care → Battery → Background usage limits** and make sure the app isn't listed under "Sleeping apps" / "Deep sleeping apps"; temporarily disable "Put unused apps to sleep" while testing.
+
+### Any device — testID not exposed as Android resource-id
+
+Some app builds don't expose React Native `testID` as Android `resource-id` (iOS gets it reliably as the accessibility identifier; Android sometimes only gets visible text / `content-desc`, depending on view flattening and the input components used). If an Android page object hangs waiting on a `testID` that never resolves:
+
+```bash
+adb shell uiautomator dump /sdcard/window_dump.xml && adb pull /sdcard/window_dump.xml
+grep -o 'resource-id="[^"]*"\|content-desc="[^"]*"\|text="[^"]*"' window_dump.xml
+```
+
+If the target element's `resource-id` is empty, match on visible text/content-desc instead — see the Android fallbacks in `projects/vetpal/pages/LoginPage.js` (`isOnLoginScreenFast`, `#isHomeVisible`) for the pattern already used in this codebase.
+
+---
+
 ## After setup — run tests
 
 ### JavaScript / TypeScript
