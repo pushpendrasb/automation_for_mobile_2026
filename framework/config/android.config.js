@@ -23,6 +23,10 @@ function buildAndroidCapabilities() {
     'appium:fullReset': false,
     'appium:newCommandTimeout': 240,
     'appium:autoGrantPermissions': true,
+    // Some OEMs (OnePlus/Oppo/Realme, Xiaomi, ...) deny WRITE_SECURE_SETTINGS to `adb shell`
+    // even with USB debugging on, which fails session creation on the hidden-api-policy step.
+    // This makes that step non-fatal instead of aborting the whole session.
+    'appium:ignoreHiddenApiPolicyError': true,
   };
 
   if (deviceId) {

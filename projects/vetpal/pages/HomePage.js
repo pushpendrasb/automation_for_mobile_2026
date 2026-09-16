@@ -35,7 +35,13 @@ class HomePage {
               return true;
             }
           }
-          return false;
+          // This app build does not expose testID as Android resource-id, so the
+          // loop above never matches on Android. Fall back to the text-based
+          // Home/Login checks that already work there (see LoginPage#isHomeVisible).
+          return (
+            (await LoginPage.isHomeVisibleFast()) ||
+            (await LoginPage.isOnLoginScreenFast())
+          );
         }
         const parts = readyIds.map(id => `name == "${id}" OR label == "${id}"`);
         const els = await $$(`-ios predicate string:${parts.join(' OR ')}`);

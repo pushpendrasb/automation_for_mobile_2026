@@ -100,6 +100,12 @@ class LoginPage {
    * Sign Up and must tap Sign In (Login.js defaults `isSignIn` to false).
    */
   async ensureSignInMode() {
+    if (this.#isAndroid() && (await this.isOnLoginScreenFast())) {
+      // testID is not exposed as Android resource-id on this app build, so the
+      // testID-only checks below never match here. isOnLoginScreenFast() already
+      // has a working text-based fallback (see #anyDisplayed(mobilePlaceholder)).
+      return;
+    }
     if (await ui.firstByTestId(TEST_IDS.login.email)) {
       await ui.requireTapTestId(TEST_IDS.login.signInTab);
       await browser.waitUntil(
@@ -602,13 +608,25 @@ class LoginPage {
 
     let submit = await ui.firstByTestId(TEST_IDS.login.submit);
     if (!submit) {
+      const { signInButton } = this.#testData();
       await browser.waitUntil(
         async () => {
           if (await this.#alreadyPastLogin()) {
             return true;
           }
           submit = await ui.firstByTestId(TEST_IDS.login.submit);
-          return Boolean(submit);
+          if (submit) {
+            return true;
+          }
+          // testID is not exposed as Android resource-id on this app build —
+          // fall back to the visible "Sign In Now" caption used below anyway.
+          if (this.#isAndroid()) {
+            return Boolean(
+              (await ui.firstCaption(signInButton)) ||
+                (await ui.firstCaptionContains(signInButton)),
+            );
+          }
+          return false;
         },
         {
           timeout: 8000,
@@ -634,9 +652,17 @@ class LoginPage {
       }
     }
 
-    const caption =
-      (await ui.firstCaption('Sign In Now')) ||
-      (await ui.firstCaptionContains('Sign In Now'));
+    // Android: the "Sign In Now" TextView is not clickable — its parent
+    // ViewGroup (content-desc="Sign In Now") is the real touch target.
+    // Tapping the TextView via firstCaption silently does not submit.
+    const caption = this.#isAndroid()
+      ? (await this.#firstDisplayed(
+          `android=new UiSelector().description("${this.#escape('Sign In Now')}")`,
+        )) ||
+        (await ui.firstCaption('Sign In Now')) ||
+        (await ui.firstCaptionContains('Sign In Now'))
+      : (await ui.firstCaption('Sign In Now')) ||
+        (await ui.firstCaptionContains('Sign In Now'));
     if (caption) {
       ui.log('Login', 'Tap Sign In Now caption');
       await caption.click().catch(() => ui.press(caption));
