@@ -598,9 +598,12 @@
       left.appendChild(cb);
     }
     const info = document.createElement('div');
-    info.innerHTML = `<p class="name">${escapeHtml(
+    info.className = 'script-info';
+    info.innerHTML = `<div class="script-title-row"><p class="name">${escapeHtml(
       s.title
-    )}</p><p class="cmd">npm run ${escapeHtml(s.name)}</p>`;
+    )}</p><span class="script-status" hidden></span></div><p class="cmd">npm run ${escapeHtml(
+      s.name
+    )}</p>`;
     left.appendChild(info);
     row.appendChild(left);
     const runBtn = document.createElement('button');
@@ -620,35 +623,161 @@
     return row;
   }
 
+  /** Reset busy/queue chrome on a row; keep pass/fail marks unless fullReset. */
+  function resetScriptRowBusy(row, { fullReset = false } = {}) {
+    row.classList.remove('is-running', 'is-queued');
+    if (fullReset) {
+      row.classList.remove('is-done-pass', 'is-done-fail');
+    }
+    const badge = row.querySelector('.script-status');
+    if (badge && (fullReset || badge.dataset.state === 'running' || badge.dataset.state === 'queued')) {
+      badge.hidden = true;
+      badge.textContent = '';
+      badge.dataset.state = '';
+    }
+    const btn = row.querySelector('.btn-run');
+    if (btn) {
+      btn.classList.remove('is-busy', 'is-stop');
+      btn.disabled = false;
+      if (
+        btn.textContent === 'Running…' ||
+        btn.textContent === 'Queued…' ||
+        btn.textContent === 'Stop'
+      ) {
+        btn.textContent = 'Run';
+      }
+    }
+  }
+
   /** Clear running/queued highlights from all script rows. */
   function clearScriptRowStates() {
     document.querySelectorAll('.script-row').forEach((row) => {
-      row.classList.remove('is-running', 'is-queued', 'is-done-pass', 'is-done-fail');
-      const btn = row.querySelector('.btn-run');
-      if (btn) {
-        btn.classList.remove('is-busy', 'is-stop');
-        btn.disabled = false;
-        if (
-          btn.textContent === 'Running…' ||
-          btn.textContent === 'Queued…' ||
-          btn.textContent === 'Stop'
-        ) {
-          btn.textContent = 'Run';
-        }
-      }
+      resetScriptRowBusy(row, { fullReset: true });
     });
     document.querySelector('.log-panel')?.classList.remove('is-live');
   }
 
   /**
-   * Highlight the script that is running / queued and update its Run button.
-   * While running, the row button becomes Stop so the user can cancel.
+   * Highlight the active script + any waiting queue (multi-select / suite).
+   * @param {string | null} runningScript
+   * @param {Array<string | { script: string }>} queue
+   * @param {{ scroll?: boolean }} [opts]
+   */
+  function syncScriptHighlights(runningScript, queue = [], opts = {}) {
+    const queuedNames = queue
+      .map((q) => (typeof q === 'string' ? q : q?.script))
+      .filter(Boolean);
+    const queuedSet = new Set(queuedNames);
+
+    document.querySelectorAll('.script-row').forEach((row) => {
+      const name = row.dataset.script;
+      const isRunning = Boolean(runningScript && name === runningScript);
+      const isQueued = queuedSet.has(name);
+
+      if (!isRunning && !isQueued) {
+        resetScriptRowBusy(row);
+        return;
+      }
+
+      row.classList.remove('is-done-pass', 'is-done-fail');
+      const badge = row.querySelector('.script-status');
+      const btn = row.querySelector('.btn-run');
+
+      if (isRunning) {
+        row.classList.add('is-running');
+        row.classList.remove('is-queued');
+        if (badge) {
+          badge.hidden = false;
+          badge.textContent = 'NOW RUNNING';
+          badge.dataset.state = 'running';
+        }
+        if (btn) {
+          btn.classList.remove('is-busy');
+          btn.classList.add('is-stop');
+          btn.textContent = 'Stop';
+          btn.disabled = false;
+        }
+      } else {
+        row.classList.add('is-queued');
+        row.classList.remove('is-running');
+        if (badge) {
+          badge.hidden = false;
+          badge.textContent = `QUEUED${
+            queuedNames.indexOf(name) >= 0
+              ? ` #${queuedNames.indexOf(name) + 1}`
+              : ''
+          }`;
+          badge.dataset.state = 'queued';
+        }
+        if (btn) {
+          btn.classList.remove('is-stop');
+          btn.classList.add('is-busy');
+          btn.textContent = 'Queued…';
+          btn.disabled = true;
+        }
+      }
+    });
+
+    document.querySelector('.log-panel')?.classList.add('is-live');
+
+    if (opts.scroll && runningScript) {
+      const row = document.querySelector(
+        `.script-row[data-script="${CSS.escape(runningScript)}"]`
+      );
+      row?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+  }
+
+  /**
+   * Highlight the script that is running / queued / finished and update its Run button.
    * @param {string | null} scriptName
    * @param {'running' | 'queued' | 'passed' | 'failed' | 'idle'} state
+   * @param {Array<string | { script: string }>} [queue]
    */
-  function setScriptRowState(scriptName, state) {
-    clearScriptRowStates();
-    if (!scriptName || state === 'idle') return;
+  function setScriptRowState(scriptName, state, queue = []) {
+    if (state === 'running') {
+      syncScriptHighlights(scriptName, queue);
+      return;
+    }
+    if (state === 'queued') {
+      syncScriptHighlights(null, [scriptName, ...queue]);
+      // Mark this one as first queued visually via sync — if only queued, no running
+      const row = scriptName
+        ? document.querySelector(
+            `.script-row[data-script="${CSS.escape(scriptName)}"]`
+          )
+        : null;
+      if (row) {
+        row.classList.add('is-queued');
+        const badge = row.querySelector('.script-status');
+        if (badge) {
+          badge.hidden = false;
+          badge.textContent = 'QUEUED';
+          badge.dataset.state = 'queued';
+        }
+      }
+      return;
+    }
+
+    if (state === 'idle' || !scriptName) {
+      clearScriptRowStates();
+      return;
+    }
+
+    // Finished: clear busy on others in queue stay? Prefer keep queue highlights.
+    const queuedNames = queue
+      .map((q) => (typeof q === 'string' ? q : q?.script))
+      .filter(Boolean);
+
+    if (queuedNames.length) {
+      // Next script will start shortly — show finished + remaining queue
+      syncScriptHighlights(null, queuedNames);
+    } else {
+      document.querySelectorAll('.script-row').forEach((row) => {
+        resetScriptRowBusy(row);
+      });
+      document.querySelector('.log-panel')?.classList.remove('is-live');
+    }
 
     const row = document.querySelector(
       `.script-row[data-script="${CSS.escape(scriptName)}"]`
@@ -656,32 +785,31 @@
     if (!row) return;
 
     const btn = row.querySelector('.btn-run');
-    if (state === 'running') {
-      row.classList.add('is-running');
-      document.querySelector('.log-panel')?.classList.add('is-live');
-      if (btn) {
-        btn.classList.add('is-stop');
-        btn.textContent = 'Stop';
-        btn.disabled = false;
-      }
-    } else if (state === 'queued') {
-      row.classList.add('is-queued');
-      if (btn) {
-        btn.classList.add('is-busy');
-        btn.textContent = 'Queued…';
-        btn.disabled = true;
-      }
-    } else if (state === 'passed') {
+    const badge = row.querySelector('.script-status');
+    row.classList.remove('is-running', 'is-queued');
+    if (state === 'passed') {
       row.classList.add('is-done-pass');
+      if (badge) {
+        badge.hidden = false;
+        badge.textContent = 'PASSED';
+        badge.dataset.state = 'passed';
+      }
       if (btn) {
         btn.textContent = 'Run';
         btn.disabled = false;
+        btn.classList.remove('is-busy', 'is-stop');
       }
     } else if (state === 'failed') {
       row.classList.add('is-done-fail');
+      if (badge) {
+        badge.hidden = false;
+        badge.textContent = 'FAILED';
+        badge.dataset.state = 'failed';
+      }
       if (btn) {
         btn.textContent = 'Run';
         btn.disabled = false;
+        btn.classList.remove('is-busy', 'is-stop');
       }
     }
   }
@@ -702,26 +830,15 @@
   }
 
   /**
-   * Scroll the script row into view, then scroll the Run log into view.
+   * Scroll the running script row into view (multi-run identification).
    * @param {string | null} scriptName
    */
   function focusRunUi(scriptName) {
-    const row = scriptName
-      ? document.querySelector(
-          `.script-row[data-script="${CSS.escape(scriptName)}"]`
-        )
-      : null;
-    if (row) {
-      row.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    }
-    // After a short beat, bring the live log into view so the client sees output
-    window.setTimeout(() => {
-      const panel = document.querySelector('.log-panel');
-      if (panel) {
-        panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      }
-      els.logView?.scrollTo?.({ top: els.logView.scrollHeight, behavior: 'smooth' });
-    }, 350);
+    if (!scriptName) return;
+    const row = document.querySelector(
+      `.script-row[data-script="${CSS.escape(scriptName)}"]`
+    );
+    row?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   }
 
   /** Classify npm script group → ios | android | other. */
@@ -1063,12 +1180,7 @@
       detail: scripts.join(', '),
       state: 'running',
     });
-    setScriptRowState(scripts[0], 'running');
-    for (let i = 1; i < scripts.length; i++) {
-      document
-        .querySelector(`.script-row[data-script="${CSS.escape(scripts[i])}"]`)
-        ?.classList.add('is-queued');
-    }
+    setScriptRowState(scripts[0], 'running', scripts.slice(1));
     focusRunUi(scripts[0]);
     try {
       const result = await api('/api/run/many', {
@@ -1114,14 +1226,8 @@
             }`,
             state: 'running',
           });
-          setScriptRowState(run.script, 'running');
-          for (const q of queue) {
-            document
-              .querySelector(
-                `.script-row[data-script="${CSS.escape(q.script)}"]`
-              )
-              ?.classList.add('is-queued');
-          }
+          setScriptRowState(run.script, 'running', queue);
+          focusRunUi(run.script);
         } else {
           const doneState =
             run.status === 'passed' || run.exitCode === 0 ? 'passed' : 'failed';
@@ -1135,7 +1241,7 @@
             }`,
             state: doneState,
           });
-          setScriptRowState(run.script, doneState);
+          setScriptRowState(run.script, doneState, queue);
         }
       }
 
