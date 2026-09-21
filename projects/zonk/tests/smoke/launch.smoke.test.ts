@@ -1,9 +1,11 @@
+import HomePage from '../../pages/HomePage';
+
 /**
  * Minimal launch smoke — replace with real page objects for your app.
  * Verifies Appium can start a session and read the active app package/bundle.
  */
 describe('Zonk — launch smoke', () => {
-  it('SM-001 starts a session and reports the current app id', async () => {
+  it('SM-001 starts a session and opens the home screen', async () => {
     const driver = browser;
     await driver.pause(2000);
 
@@ -28,6 +30,8 @@ describe('Zonk — launch smoke', () => {
     }
 
     console.log(`[smoke] platform=${platform} appId=${appId || '(unknown)'}`);
-    expect(true).toBe(true);
+    
+    const isHomeVisible = await HomePage.isDisplayed();
+    expect(isHomeVisible).toBe(true);
   });
 });

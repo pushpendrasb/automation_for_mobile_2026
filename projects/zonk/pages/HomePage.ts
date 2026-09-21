@@ -1,13 +1,17 @@
 /**
- * Placeholder page object — replace locators with your app's UI.
+ * Home page object.
  */
 class HomePage {
   /**
    * Whether the home screen is visible.
    */
   async isDisplayed(): Promise<boolean> {
-    // TODO: replace with a real selector for your home screen
-    return true;
+    // Use text-based locator for Android to avoid issues with testID stripping in React Native release builds
+    const selector = driver.isAndroid 
+      ? '//*[@text="Browse By Sector"]'
+      : '~home-screen';
+    const homeScreen = await $(selector);
+    return homeScreen.waitForDisplayed({ timeout: 15000 });
   }
 }
 
