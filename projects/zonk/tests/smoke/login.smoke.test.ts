@@ -4,11 +4,15 @@ import LoginPage from '../../pages/LoginPage';
 
 describe('Zonk — login flow', () => {
   it('SM-002 navigates to Account and opens Login Screen', async () => {
+    // 0. Dismiss the Force Update modal if it appears on app launch
+    await HomePage.dismissUpdateModalIfPresent();
+
     // 1. Wait for Home Screen
     const isHomeVisible = await HomePage.isDisplayed();
     expect(isHomeVisible).toBe(true);
 
     // 2. Tap on Account Tab
+    await driver.pause(2000); // Give React Navigation time to settle
     await BottomNav.tapAccount();
 
     // 3. Verify Login Screen is displayed

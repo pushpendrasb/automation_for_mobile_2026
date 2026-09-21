@@ -24,7 +24,13 @@ class LoginPage {
   }
 
   async isDisplayed() {
-    return this.signInButton.waitForDisplayed({ timeout: 15000 });
+    try {
+      return await this.signInButton.waitForDisplayed({ timeout: 15000 });
+    } catch (e) {
+      console.log("LOGIN SCREEN NOT FOUND. DUMPING PAGE SOURCE:");
+      console.log(await driver.getPageSource());
+      throw e;
+    }
   }
 
   async login(email?: string, password?: string) {

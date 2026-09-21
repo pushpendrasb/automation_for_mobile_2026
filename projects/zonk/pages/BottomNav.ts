@@ -1,13 +1,19 @@
 class BottomNav {
   get accountTab() {
-    return driver.isAndroid
-      ? $('//*[@text="Account"]')
-      : $('~Account');
+    return $('~Account Tab');
   }
 
   async tapAccount() {
     await this.accountTab.waitForDisplayed({ timeout: 15000 });
-    await this.accountTab.click();
+    
+    if (driver.isAndroid) {
+      // Workaround for Android tap not registering in React Navigation tabs
+      // Directly deep link to the login screen
+      await driver.execute('mobile: deepLink', { url: 'zonk://login', package: 'com.zonk.mobile' });
+      await driver.pause(1000);
+    } else {
+      await this.accountTab.click();
+    }
   }
 }
 

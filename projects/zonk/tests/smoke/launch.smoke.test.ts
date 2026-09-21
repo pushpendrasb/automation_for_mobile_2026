@@ -31,6 +31,9 @@ describe('Zonk — launch smoke', () => {
 
     console.log(`[smoke] platform=${platform} appId=${appId || '(unknown)'}`);
     
+    // Dismiss the Force Update modal if it appears on app launch
+    await HomePage.dismissUpdateModalIfPresent();
+
     const isHomeVisible = await HomePage.isDisplayed();
     expect(isHomeVisible).toBe(true);
   });
