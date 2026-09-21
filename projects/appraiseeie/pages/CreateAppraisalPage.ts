@@ -49,18 +49,32 @@ export class CreateAppraisalPage {
     await field.setValue(value);
   }
 
+  /**
+   * App uses IQKeyboardManager: every keyboard gets a custom toolbar with a
+   * "Toolbar Done Button" (rendered as a checkmark, no text). It's a real,
+   * accessible button — not a keyboard "Return"/"Done" key — so WDA's
+   * hideKeyboard() can't find it and just times out retrying. Tap it directly.
+   */
   private async dismissKeyboard(): Promise<void> {
     try {
-      await browser.hideKeyboard('pressKey', 'Return');
+      const done = await $(
+        '-ios predicate string:name == "Toolbar Done Button" OR label == "Toolbar Done Button"'
+      );
+      if (await done.isDisplayed().catch(() => false)) {
+        await done.click();
+        await browser.pause(300);
+        return;
+      }
+    } catch {
+      /* fall through */
+    }
+    try {
+      await browser.hideKeyboard();
     } catch {
       try {
-        await browser.hideKeyboard();
+        await browser.execute('mobile: tap', { x: 20, y: 120 });
       } catch {
-        try {
-          await browser.execute('mobile: tap', { x: 20, y: 120 });
-        } catch {
-          /* ignore */
-        }
+        /* ignore */
       }
     }
     await browser.pause(300);
@@ -210,7 +224,9 @@ export class CreateAppraisalPage {
     await this.dismissKeyboard();
 
     if (opts.registration) {
-      await this.scrollDown(1);
+      // Check before scrolling: a blind scrollDown(1) here used to overshoot
+      // past the REGISTRATION field into MODEL VARIANT / PRICING further down.
+      await this.scrollUntilDisplayed(this.reqRegSelectors());
       clientLog(`Entering registration ${opts.registration}`);
       // Prefer trade-in field if already on that step; else vehicle required
       try {
@@ -254,9 +270,33 @@ export class CreateAppraisalPage {
     }
   }
 
+  /**
+   * "This vehicle has previously been appraised in this dealership" — shown
+   * when the plate lookup matches an existing record (e.g. a reused test
+   * registration). It's a modal card, not a native alert, and blocks all
+   * taps/scrolls behind it until dismissed.
+   */
+  async dismissInfoAlertIfPresent(): Promise<void> {
+    try {
+      const btn = await $(
+        '-ios predicate string:label == "Continue" OR name == "Continue"'
+      );
+      if (await btn.isDisplayed().catch(() => false)) {
+        await btn.click();
+        clientLog('Dismissed "previously appraised" alert');
+        await browser.pause(500);
+      }
+    } catch {
+      /* not present */
+    }
+  }
+
   async tapNext(preferId: string): Promise<void> {
     await this.dismissKeyboard();
-    await this.scrollDown(2);
+    await this.dismissInfoAlertIfPresent();
+    // Forms vary in length (Trade In has many more fields than Vehicle
+    // Required) — a fixed scroll count can under/overshoot NEXT.
+    await this.scrollUntilDisplayed(this.nextSelectors(preferId), 6);
     const next = await this.findDisplayed(this.nextSelectors(preferId), 12000);
     await next.click();
     clientLog('NEXT tapped');
@@ -332,6 +372,7 @@ export class CreateAppraisalPage {
     await this.dismissKeyboard();
     await this.tapLookupIfPresent();
     await browser.pause(2000);
+    await this.dismissInfoAlertIfPresent();
 
     await this.tapNext(TEST_IDS.tradeIn.trdNext);
 
@@ -518,6 +559,30 @@ export class CreateAppraisalPage {
         clientLog(`ADD control not found for ${label} — skipping`);
       }
     }
+  }
+
+  /**
+   * Check before scrolling, then scroll one step at a time, re-checking after
+   * each — avoids overshooting a field with a fixed-count blind scroll.
+   */
+  private async scrollUntilDisplayed(selectors: string[], maxSwipes = 4): Promise<boolean> {
+    for (let i = 0; i <= maxSwipes; i++) {
+      for (const sel of selectors) {
+        try {
+          const el = await $(sel);
+          if (
+            (await el.isExisting().catch(() => false)) &&
+            (await el.isDisplayed().catch(() => false))
+          ) {
+            return true;
+          }
+        } catch {
+          /* try next selector */
+        }
+      }
+      if (i < maxSwipes) await this.scrollDown(1);
+    }
+    return false;
   }
 
   private async scrollUntilLabelVisible(label: string, maxSwipes = 6): Promise<void> {
