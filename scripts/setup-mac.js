@@ -231,10 +231,10 @@ async function collectEnvUpdates(projectId, extra = {}) {
   const alreadyAsked = Boolean(
     extra.platform && (extra.iosBundleId || extra.androidPackage),
   );
-  // Existing projects already have real bundle/package ids committed in
-  // project.config.js — only a freshly scaffolded, unconfigured project still
-  // has the generic placeholder, which is the one case worth asking about.
-  const idsAreKnown = defaultBundle !== 'com.example.app' || defaultPackage !== 'com.example.app';
+  // Bundle ID / Android package still get asked (not silently skipped) even
+  // for an existing project — but pre-filled from project.config.js as the
+  // default, so pressing Enter accepts it in one keystroke while typing a
+  // different value still overrides it (e.g. testing a staging build).
   const ids = alreadyAsked
     ? {
         platform: /** @type {import('./lib/platformIds').TargetPlatform} */ (
@@ -248,7 +248,6 @@ async function collectEnvUpdates(projectId, extra = {}) {
         iosBundleId: extra.iosBundleId || defaultBundle,
         androidPackage: extra.androidPackage || defaultPackage || defaultBundle,
         defaultBundle,
-        skipFilledPrompts: idsAreKnown,
       });
 
   const platform = ids.platform;
