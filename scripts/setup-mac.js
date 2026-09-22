@@ -231,6 +231,10 @@ async function collectEnvUpdates(projectId, extra = {}) {
   const alreadyAsked = Boolean(
     extra.platform && (extra.iosBundleId || extra.androidPackage),
   );
+  // Existing projects already have real bundle/package ids committed in
+  // project.config.js — only a freshly scaffolded, unconfigured project still
+  // has the generic placeholder, which is the one case worth asking about.
+  const idsAreKnown = defaultBundle !== 'com.example.app' || defaultPackage !== 'com.example.app';
   const ids = alreadyAsked
     ? {
         platform: /** @type {import('./lib/platformIds').TargetPlatform} */ (
@@ -244,6 +248,7 @@ async function collectEnvUpdates(projectId, extra = {}) {
         iosBundleId: extra.iosBundleId || defaultBundle,
         androidPackage: extra.androidPackage || defaultPackage || defaultBundle,
         defaultBundle,
+        skipFilledPrompts: idsAreKnown,
       });
 
   const platform = ids.platform;
