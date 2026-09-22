@@ -355,7 +355,9 @@ async function collectEnvUpdates(projectId, extra = {}) {
     console.log('\n=== Android device ===');
     const androidDevices = listAndroidDevices();
     if (androidDevices.length) {
-      const labels = androidDevices.map((d) => `${d.id} (${d.status})`);
+      const labels = androidDevices.map(
+        (d) => `${d.id} (${d.name || 'unknown model'}, ${d.status})`,
+      );
       labels.push('Use first connected device (leave ANDROID_DEVICE_ID empty)');
       labels.push('Enter serial manually');
       const pick = await askChoice('Select Android device', labels, 0);

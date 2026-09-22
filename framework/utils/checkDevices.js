@@ -108,6 +108,18 @@ function checkAndroid() {
   const out = run('adb devices');
   console.log(out || '(adb not installed or no output)');
 
+  const connected = out
+    .split('\n')
+    .slice(1)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => line.split(/\s+/))
+    .filter(([, status]) => status === 'device');
+  for (const [id] of connected) {
+    const name = run(`adb -s ${id} shell getprop ro.product.model`).trim();
+    console.log(`  ${id} — ${name || 'unknown model'}`);
+  }
+
   const deviceId = process.env.ANDROID_DEVICE_ID;
   if (!deviceId) {
     console.log(

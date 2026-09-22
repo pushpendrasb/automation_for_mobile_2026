@@ -108,8 +108,19 @@ function listIosDevices() {
 }
 
 /**
- * Connected Android devices via adb.
- * @returns {{ id: string, status: string }[]}
+ * Human-readable model name for a connected Android device (e.g. "OnePlus 9R").
+ * Empty string if adb can't reach it (unauthorized, offline, etc).
+ * @param {string} id
+ * @returns {string}
+ */
+function androidDeviceName(id) {
+  const model = runQuiet('adb', ['-s', id, 'shell', 'getprop', 'ro.product.model']);
+  return (model || '').trim();
+}
+
+/**
+ * Connected Android devices via adb, with each device's model name resolved.
+ * @returns {{ id: string, status: string, name: string }[]}
  */
 function listAndroidDevices() {
   const out = runQuiet('adb', ['devices']);
@@ -123,7 +134,8 @@ function listAndroidDevices() {
       const [id, status] = line.split(/\s+/);
       return { id, status: status || 'unknown' };
     })
-    .filter((d) => d.status === 'device');
+    .filter((d) => d.status === 'device')
+    .map((d) => ({ ...d, name: androidDeviceName(d.id) }));
 }
 
 /**
