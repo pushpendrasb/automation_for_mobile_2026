@@ -216,7 +216,17 @@ function listReports(projectId) {
     if (ra !== rb) return ra - rb;
     return b.mtime - a.mtime;
   });
-  return scored;
+
+  // Show only the 10 most recent run reports ("latest" + "archive") per
+  // project — matches the same 10-recent-runs cap as the dashboard's run
+  // history. Reference docs (catalog) aren't a "run" and stay unlimited.
+  const runKinds = new Set(['latest', 'archive']);
+  let runsKept = 0;
+  return scored.filter((r) => {
+    if (!runKinds.has(r.kind)) return true;
+    runsKept++;
+    return runsKept <= MAX_HISTORY_PER_PROJECT;
+  });
 }
 
 function readEnvFile(projectId) {
