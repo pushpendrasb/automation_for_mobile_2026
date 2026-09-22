@@ -27,7 +27,12 @@ module.exports = {
   mochaTimeout: 600000,
 
   defaults: {
-    ios: { bundleId: 'ie.appraisee.app' },
+    // teamId is the org's Apple Developer Team ID (not secret — same as what
+    // developer.apple.com shows under Membership details). Committing it here
+    // means `npm run setup` on any Mac defaults to it instead of asking every
+    // teammate to retype it; a new Mac still needs its own Xcode Development
+    // signing certificate for this team before WebDriverAgent will build.
+    ios: { bundleId: 'ie.appraisee.app', teamId: '994MZ4U48X' },
     android: { appPackage: 'com.vehicleappraisalmanager' },
   },
 };

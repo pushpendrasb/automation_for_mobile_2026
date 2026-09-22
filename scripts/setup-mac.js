@@ -25,7 +25,7 @@ const {
   projectDir,
   listProjects,
 } = require('./lib/detect');
-const { writeProjectEnv } = require('./lib/env');
+const { writeProjectEnv, readEnvFile } = require('./lib/env');
 const {
   askScriptLanguage,
   normalizeLanguage,
@@ -104,7 +104,8 @@ function readDefaultIds(pDir) {
     const config = require(configPath);
     const bundle = config.defaults?.ios?.bundleId || 'com.example.app';
     const packageName = config.defaults?.android?.appPackage || bundle;
-    return { bundle, packageName };
+    const teamId = config.defaults?.ios?.teamId || '';
+    return { bundle, packageName, teamId };
   } catch {
     // Python template
   }
@@ -114,7 +115,7 @@ function readDefaultIds(pDir) {
     const text = fs.readFileSync(pyPath, 'utf8');
     const m = text.match(/BUNDLE_ID\s*=\s*["']([^"']+)["']/);
     if (m) {
-      return { bundle: m[1], packageName: m[1] };
+      return { bundle: m[1], packageName: m[1], teamId: '' };
     }
   }
 
@@ -123,11 +124,11 @@ function readDefaultIds(pDir) {
     const text = fs.readFileSync(envExample, 'utf8');
     const m = text.match(/^IOS_BUNDLE_ID=(.+)$/m);
     if (m && m[1].trim() && !m[1].includes('__')) {
-      return { bundle: m[1].trim(), packageName: m[1].trim() };
+      return { bundle: m[1].trim(), packageName: m[1].trim(), teamId: '' };
     }
   }
 
-  return { bundle: 'com.example.app', packageName: 'com.example.app' };
+  return { bundle: 'com.example.app', packageName: 'com.example.app', teamId: '' };
 }
 
 /**
@@ -209,12 +210,16 @@ async function resolveProject(preferred, scriptLanguage) {
  *   androidPackage?: string,
  *   appSourcePath?: string,
  *   appSourceRepoUrl?: string,
+ *   existingTeamId?: string,
  * }} [extra]
  */
 async function collectEnvUpdates(projectId, extra = {}) {
   const pDir = projectDir(projectId);
-  const { bundle: defaultBundle, packageName: defaultPackage } =
+  const { bundle: defaultBundle, packageName: defaultPackage, teamId: projectTeamId } =
     readDefaultIds(pDir);
+  // Machine's own .env (if this Mac already ran setup once) wins over the
+  // project-level default committed in project.config.js.
+  const defaultTeamId = extra.existingTeamId || projectTeamId;
 
   // Platform first, then only the matching app id fields.
   // If create-project already asked, reuse those answers (do not ask again).
@@ -287,7 +292,10 @@ async function collectEnvUpdates(projectId, extra = {}) {
     }
 
     if (updates.IOS_DEVICE_UDID) {
-      console.log(`
+      if (defaultTeamId) {
+        console.log(`\n  Apple Team ID on file: ${defaultTeamId} — press Enter to keep it, or paste a different one.`);
+      } else {
+        console.log(`
   Apple Team ID (required for real-device tests)
   ---------------------------------------------
   Xcode → Settings → Accounts does NOT show a field named "Membership ID".
@@ -303,7 +311,11 @@ async function collectEnvUpdates(projectId, extra = {}) {
 
   Paste that Team ID below (not the membership expiry date / not your email).
 `);
-      updates.IOS_TEAM_ID = await ask('Apple Team ID (10 characters)');
+      }
+      updates.IOS_TEAM_ID = await ask(
+        'Apple Team ID (10 characters)',
+        defaultTeamId || '',
+      );
       if (!updates.IOS_TEAM_ID) {
         console.warn(
           '  Warning: empty IOS_TEAM_ID usually causes WebDriverAgent signing failures on a real iPhone.',
@@ -312,9 +324,18 @@ async function collectEnvUpdates(projectId, extra = {}) {
         console.warn(
           '  Warning: Team ID is usually exactly 10 letters/numbers. Double-check developer.apple.com → Membership details.',
         );
+      } else if (!projectTeamId) {
+        console.log(
+          `  Tip: add teamId: '${updates.IOS_TEAM_ID}' under defaults.ios in ` +
+            `projects/${projectId}/project.config.js so teammates and future Macs ` +
+            'reuse it automatically instead of retyping it.',
+        );
       }
     } else {
-      updates.IOS_TEAM_ID = await ask('Apple Team ID (optional for simulator)', '');
+      updates.IOS_TEAM_ID = await ask(
+        'Apple Team ID (optional for simulator)',
+        defaultTeamId || '',
+      );
     }
 
     if (!alreadyAsked) {
@@ -497,6 +518,11 @@ async function main() {
   const effectiveLanguage =
     detected === 'unknown' ? scriptLanguage : /** @type {typeof scriptLanguage} */ (detected);
 
+  // Reuse this project's existing Team ID as a default so re-running setup on
+  // an existing project (e.g. configuring a new Mac for the same app) doesn't
+  // force retyping it — only device-specific values (UDID) need to change.
+  const existingEnv = readEnvFile(path.join(pDir, '.env'));
+
   const updates = await collectEnvUpdates(projectId, {
     scriptLanguage: effectiveLanguage,
     platform: resolved.platform,
@@ -504,6 +530,7 @@ async function main() {
     androidPackage: resolved.androidPackage,
     appSourcePath: resolved.appSourcePath,
     appSourceRepoUrl: resolved.appSourceRepoUrl,
+    existingTeamId: existingEnv.IOS_TEAM_ID,
   });
 
   // Real iPhone: build+install WebDriverAgent DURING setup (before first test).
