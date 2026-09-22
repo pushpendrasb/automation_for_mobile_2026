@@ -20,6 +20,8 @@
     "check:devices": "AUTOMATION_PROJECT_ROOT=. node ../../framework/utils/checkDevices.js",
     "check:devices:ios": "AUTOMATION_PROJECT_ROOT=. node ../../framework/utils/checkDevices.js ios",
     "check:devices:android": "AUTOMATION_PROJECT_ROOT=. node ../../framework/utils/checkDevices.js android",
+    "kill:wda": "node ../../framework/utils/killWda.js",
+    "kill:wda:list": "node ../../framework/utils/killWda.js --list",
     "report:open": "open ./reports/appraiseeie-report.html || xdg-open ./reports/appraiseeie-report.html",
     "typecheck": "tsc --noEmit"
   },

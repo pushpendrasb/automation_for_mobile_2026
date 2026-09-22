@@ -62,7 +62,7 @@ export class HomePage {
           lastError = err;
         }
       }
-      await browser.pause(300);
+      await browser.pause(200);
     }
 
     throw new Error(

@@ -132,7 +132,22 @@ function buildReporterHooks(platformName, project) {
           `${safeName}_${stamp}.png`,
         );
         try {
-          await browser.saveScreenshot(filePath);
+          // A failure that leaves the device/WDA session unresponsive (e.g.
+          // an app stuck mid-submission) must not be able to hang this
+          // screenshot call indefinitely — webdriverio's own retry settings
+          // allow a single command to block for minutes, which would delay
+          // testReport.recordTest below and, in turn, the onComplete report
+          // write in the launcher process. Bound it so the run always
+          // finishes and a report always gets written.
+          await Promise.race([
+            browser.saveScreenshot(filePath),
+            new Promise((_, reject) =>
+              setTimeout(
+                () => reject(new Error('screenshot timed out after 10s')),
+                10000,
+              ),
+            ),
+          ]);
           screenshot = filePath;
           console.log(`Failure reason: ${friendlyErrorMessage(error)}`);
           console.log(`Screenshot path: ${filePath}`);

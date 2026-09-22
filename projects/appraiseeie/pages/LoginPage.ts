@@ -72,7 +72,7 @@ export class LoginPage {
           lastError = err;
         }
       }
-      await browser.pause(400);
+      await browser.pause(250);
     }
 
     throw new Error(
@@ -98,7 +98,7 @@ export class LoginPage {
         }
       }
     }
-    await browser.pause(400);
+    await browser.pause(250);
     clientLog('Keyboard is hidden');
   }
 
@@ -127,7 +127,7 @@ export class LoginPage {
    * Type email into the login field.
    */
   async enterEmail(email: string): Promise<void> {
-    const field = await this.findDisplayed(this.emailSelectors(), 15000);
+    const field = await this.findDisplayed(this.emailSelectors(), 6000);
     await field.click();
     await field.clearValue().catch(() => undefined);
     await field.setValue(email);
@@ -138,7 +138,7 @@ export class LoginPage {
    * Type password into the login field.
    */
   async enterPassword(password: string): Promise<void> {
-    const field = await this.findDisplayed(this.passwordSelectors(), 15000);
+    const field = await this.findDisplayed(this.passwordSelectors(), 6000);
     await field.click();
     await field.clearValue().catch(() => undefined);
     await field.setValue(password);
@@ -150,7 +150,7 @@ export class LoginPage {
    */
   async tapLogin(): Promise<void> {
     await this.dismissKeyboardIfNeeded();
-    const btn = await this.findDisplayed(this.submitSelectors(), 15000);
+    const btn = await this.findDisplayed(this.submitSelectors(), 6000);
     await btn.click();
     clientLog('Login button has been tapped');
   }

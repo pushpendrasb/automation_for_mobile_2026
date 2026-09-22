@@ -231,7 +231,7 @@ export class SideMenuPage {
         return;
       }
       await this.swipeMenuUpOnce();
-      await browser.pause(400);
+      await browser.pause(250);
     }
 
     // Last chance: element in tree but clipped — still try to proceed
@@ -258,7 +258,7 @@ export class SideMenuPage {
           // Prefer click; if clipped, scrollIntoView via tap after one more swipe
           if (!(await this.isLogoutFullyVisible())) {
             await this.swipeMenuUpOnce();
-            await browser.pause(300);
+            await browser.pause(200);
           }
           await el.click();
           console.log(`[SideMenu] Tapped LOGOUT via ${sel}`);
@@ -313,7 +313,7 @@ export class SideMenuPage {
         if (await el.isDisplayed().catch(() => false)) {
           await el.click();
           clientLog('Create New Appraisal tapped');
-          await browser.pause(800);
+          await browser.pause(400);
           return;
         }
       } catch {

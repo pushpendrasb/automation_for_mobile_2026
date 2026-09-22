@@ -8,7 +8,8 @@
  * 4. Vehicle Damage — tyre/alloy from env → optional damage photos → Next
  * 5. Vehicle Photos — add slots → SAVE
  *
- * Data: Name Paul, email sami@appdesign.ie, plate 141D6333, random mobile.
+ * Data: Name Paul, email sami@appdesign.ie, Vehicle Required plate 141KY51,
+ *       Vehicle Trade In plate 141D6333, random mobile.
  * Env: APPRAISEE_TYRE_DAMAGE (default true), APPRAISEE_ALLOY_DAMAGE (default false),
  *      APPRAISEE_SKIP_PHOTOS=true to skip gallery picks while debugging.
  *
@@ -21,11 +22,13 @@ import { ensureLoggedIn } from '../../helpers/session';
 import { clientStep } from '../../helpers/clientLog';
 import {
   injectSamplePhotoToSimulator,
+  injectVehiclePhotoFixturesToSimulator,
 } from '../../helpers/iosPhotos';
 
 describe('AppraiseeIE — Create Appraisal', () => {
   before(async () => {
     injectSamplePhotoToSimulator();
+    injectVehiclePhotoFixturesToSimulator();
     await ensureLoggedIn();
   });
 
@@ -41,13 +44,13 @@ describe('AppraiseeIE — Create Appraisal', () => {
       name: appraisalData.customerName,
       email: appraisalData.customerEmail,
       mobile,
-      registration: appraisalData.registration,
+      registration: appraisalData.registrationRequired,
     });
     await CreateAppraisalPage.completeVehicleRequiredStep();
 
     clientStep('Vehicle Trade In — registration lookup and mileage');
     await CreateAppraisalPage.completeTradeInStep(
-      appraisalData.registration,
+      appraisalData.registrationTradeIn,
       appraisalData.mileage
     );
 
@@ -58,9 +61,9 @@ describe('AppraiseeIE — Create Appraisal', () => {
     );
 
     clientStep('Vehicle Photos — add images and SAVE');
+    // completePhotosStep throws if SAVE doesn't actually submit (app stays
+    // on the Photos step, or shows an error) — reaching this point without
+    // an uncaught error is the real assertion.
     await CreateAppraisalPage.completePhotosStep(appraisalData.vehiclePhotoSlots);
-
-    // Soft success: we at least left the photos SAVE action without an uncaught error
-    await expect(true).toBe(true);
   });
 });

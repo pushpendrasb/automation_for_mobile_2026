@@ -9,8 +9,10 @@
 export const appraisalData = {
   customerName: 'Paul',
   customerEmail: 'sami@appdesign.ie',
-  /** Irish-style plate used for lookup / auto-fill */
-  registration: '141D6333',
+  /** Irish-style plate entered on the Vehicle Required step */
+  registrationRequired: '141KY51',
+  /** Irish-style plate entered on the Vehicle Trade In step (lookup / auto-fill) */
+  registrationTradeIn: '141D6333',
   /** Trade-in mileage when validation fails */
   mileage: '45000',
 

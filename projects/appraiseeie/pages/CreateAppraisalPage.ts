@@ -11,7 +11,65 @@
 import { TEST_IDS } from '../data/testIds';
 import { appraisalData } from '../data/appraisalData';
 import { clientLog } from '../helpers/clientLog';
-import { pickFirstLibraryPhoto } from '../helpers/iosPhotos';
+import {
+  pickFirstLibraryPhoto,
+  pickLibraryPhotoAtIndex,
+  type DamageType,
+} from '../helpers/iosPhotos';
+import { dumpPageSource } from '../helpers/debugDump';
+
+/** One of the 6 real photo slots TradeIn.mm exposes — matches
+ * arrLblImgType's order 1:1 (see SIDE_ORDER below). There is no "FrontRear"
+ * slot in the app; marking damage on both sides means two separate calls,
+ * one per side. */
+export type VehiclePhotoSide =
+  | 'Front'
+  | 'Rear'
+  | 'DriverFront'
+  | 'DriverRear'
+  | 'PassengerFront'
+  | 'PassengerRear';
+
+const SIDE_TO_LABEL: Record<VehiclePhotoSide, string> = {
+  Front: 'FRONT',
+  DriverFront: 'DRIVER FRONT',
+  DriverRear: 'DRIVER REAR',
+  Rear: 'REAR',
+  PassengerRear: 'PASSENGER REAR',
+  PassengerFront: 'PASSENGER FRONT',
+};
+
+/** Same order as arrLblImgType in TradeIn.mm / appraisalData.vehiclePhotoSlots
+ * — keeps each side's picker index identical to what the full
+ * addVehiclePhotosForSlots flow already uses and has proven reliable. */
+const SIDE_ORDER: VehiclePhotoSide[] = [
+  'Front',
+  'DriverFront',
+  'DriverRear',
+  'Rear',
+  'PassengerRear',
+  'PassengerFront',
+];
+
+export interface AddVehiclePhotoOptions {
+  side: VehiclePhotoSide;
+  /**
+   * Fixture filename under fixtures/vehicle-photos/ — used to seed the
+   * Simulator's Photos library ahead of time (injectVehiclePhotoFixturesToSimulator)
+   * and included in log output for traceability. On a real device iOS never
+   * exposes a photo's original filename via accessibility (confirmed via
+   * live page-source dumps — labels are only "Photo, <date>"), so this can't
+   * be matched to a specific on-device photo there; the picker still falls
+   * back to the side's positional index.
+   */
+  image?: string;
+}
+
+export interface AddVehiclePhotoWithDamageOptions extends AddVehiclePhotoOptions {
+  /** Defaults to SCRATCH — the app's actual damage types are
+   * SCRATCH/DENT/CHIP/CRACK/MISSING; there is no "Rear"/"Front/Rear" type. */
+  damage?: DamageType;
+}
 
 export class CreateAppraisalPage {
   private id(value: string): string {
@@ -35,7 +93,7 @@ export class CreateAppraisalPage {
           lastError = err;
         }
       }
-      await browser.pause(350);
+      await browser.pause(200);
     }
     throw new Error(
       `Element not found (${timeoutMs}ms). Tried: ${selectors.join(' | ')}. Last: ${String(lastError)}`
@@ -62,7 +120,7 @@ export class CreateAppraisalPage {
       );
       if (await done.isDisplayed().catch(() => false)) {
         await done.click();
-        await browser.pause(300);
+        await browser.pause(200);
         return;
       }
     } catch {
@@ -77,7 +135,7 @@ export class CreateAppraisalPage {
         /* ignore */
       }
     }
-    await browser.pause(300);
+    await browser.pause(200);
   }
 
   /**
@@ -99,7 +157,7 @@ export class CreateAppraisalPage {
           await browser.execute('mobile: swipe', { direction: 'up' }).catch(() => undefined);
         });
       await browser.releaseActions().catch(() => undefined);
-      await browser.pause(350);
+      await browser.pause(250);
     }
   }
 
@@ -164,13 +222,13 @@ export class CreateAppraisalPage {
    */
   async assertNameValidationOnEmptyNext(): Promise<void> {
     clientLog('Scrolling to NEXT to trigger name validation');
-    await this.scrollDown(3);
+    await this.scrollUntilDisplayed(this.nextSelectors(TEST_IDS.tradeIn.reqNext), 6);
     const next = await this.findDisplayed(
       this.nextSelectors(TEST_IDS.tradeIn.reqNext),
       10000
     );
     await next.click();
-    await browser.pause(800);
+    await browser.pause(500);
     // App toast: "Please enter a name" (or similar)
     const ok = await this.waitForTextContaining(
       ['name', 'please enter'],
@@ -201,7 +259,7 @@ export class CreateAppraisalPage {
       } catch {
         /* retry */
       }
-      await browser.pause(250);
+      await browser.pause(150);
     }
     return false;
   }
@@ -229,6 +287,7 @@ export class CreateAppraisalPage {
       await this.scrollUntilDisplayed(this.reqRegSelectors());
       clientLog(`Entering registration ${opts.registration}`);
       // Prefer trade-in field if already on that step; else vehicle required
+      let onTradeInStep = false;
       try {
         await this.typeInto(this.reqRegSelectors(), opts.registration);
       } catch {
@@ -239,17 +298,44 @@ export class CreateAppraisalPage {
           ],
           opts.registration
         );
+        onTradeInStep = true;
       }
       await this.dismissKeyboard();
-      await this.tapLookupIfPresent();
+      await this.tapLookupIfPresent(
+        onTradeInStep ? TEST_IDS.tradeIn.trdLookup : TEST_IDS.tradeIn.reqLookup,
+        onTradeInStep ? TEST_IDS.tradeIn.trdMake : TEST_IDS.tradeIn.reqMake
+      );
     }
   }
 
   /**
    * Magnifying-glass lookup next to registration (API auto-fill).
+   * `lookupId`/`makeFieldId` are the step-specific ("req" vs "trd") test IDs;
+   * the label/class-chain predicates are a fallback only.
    */
-  async tapLookupIfPresent(): Promise<void> {
+  async tapLookupIfPresent(lookupId: string, makeFieldId: string): Promise<void> {
+    const tapped = await this.tapLookupButton(lookupId);
+    if (!tapped) return;
+    clientLog('Registration lookup tapped — waiting for auto-fill');
+    const settled = await this.waitForLookupToSettle(makeFieldId);
+    if (settled) return;
+
+    // The "previously been appraised" popup (dismissInfoAlertIfPresent)
+    // sometimes appears mid-lookup and swallows the original API response —
+    // Make/Model stay on their placeholder even though the plate is valid.
+    // Re-tapping search fires a fresh lookup call, which usually recovers it.
+    clientLog('Lookup did not auto-fill — retrying search tap once');
+    const retapped = await this.tapLookupButton(lookupId);
+    if (!retapped) return;
+    const settledOnRetry = await this.waitForLookupToSettle(makeFieldId);
+    if (!settledOnRetry) {
+      clientLog('Lookup still did not populate MAKE after retry — plate may be unrecognized');
+    }
+  }
+
+  private async tapLookupButton(lookupId: string): Promise<boolean> {
     const sels = [
+      this.id(lookupId),
       '-ios predicate string:label CONTAINS[c] "search" OR name CONTAINS[c] "search"',
       '-ios class chain:**/XCUIElementTypeButton[`label CONTAINS "magnifying" OR name CONTAINS "look"`]',
     ];
@@ -259,15 +345,52 @@ export class CreateAppraisalPage {
         for (const el of els.slice(0, 4)) {
           if (await el.isDisplayed().catch(() => false)) {
             await el.click();
-            clientLog('Registration lookup tapped — waiting for auto-fill');
-            await browser.pause(2500);
-            return;
+            return true;
           }
         }
       } catch {
-        /* next */
+        /* next selector */
       }
     }
+    return false;
+  }
+
+  /**
+   * Registration lookup is async (network call + MBProgressHUD). Rather than
+   * a blind fixed sleep, poll for the MAKE button's title to change from its
+   * "MAKE" placeholder to a real value.
+   *
+   * On the Trade In screen, dismissing the keyboard on the registration field
+   * independently fires the "already appraised" duplicate-check API — a
+   * *different* call from the one that fills Make/Model. Its alert must be
+   * dismissed as soon as it appears (it blocks all other taps), but seeing it
+   * is not "lookup done": that would return before Make/Model ever populate.
+   * So dismiss-and-keep-waiting, not dismiss-and-return.
+   *
+   * Returns whether Make/Model actually populated — the caller decides
+   * whether to retry the search tap on false, rather than logging a final
+   * "unrecognized" verdict here before a retry has even been attempted.
+   */
+  private async waitForLookupToSettle(makeFieldId: string, timeoutMs = 8000): Promise<boolean> {
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+      await this.dismissInfoAlertIfPresent();
+
+      const makeText = (
+        (await $(this.id(makeFieldId))
+          .then((el) => el.getText())
+          .catch(() => '')) || ''
+      ).trim();
+      // Placeholder is "MAKE" on Vehicle Required but "MAKE*" (required-field
+      // marker) on Vehicle Trade In — strip a trailing "*" before comparing.
+      const normalized = makeText.toUpperCase().replace(/\*$/, '');
+      if (makeText && normalized !== 'MAKE') {
+        clientLog(`Vehicle auto-filled: ${makeText}`);
+        return true;
+      }
+      await browser.pause(200);
+    }
+    return false;
   }
 
   /**
@@ -284,7 +407,7 @@ export class CreateAppraisalPage {
       if (await btn.isDisplayed().catch(() => false)) {
         await btn.click();
         clientLog('Dismissed "previously appraised" alert');
-        await browser.pause(500);
+        await browser.pause(300);
       }
     } catch {
       /* not present */
@@ -300,7 +423,7 @@ export class CreateAppraisalPage {
     const next = await this.findDisplayed(this.nextSelectors(preferId), 12000);
     await next.click();
     clientLog('NEXT tapped');
-    await browser.pause(1000);
+    await browser.pause(500);
   }
 
   /**
@@ -315,10 +438,10 @@ export class CreateAppraisalPage {
       try {
         await this.typeInto(
           this.reqRegSelectors(),
-          appraisalData.registration
+          appraisalData.registrationRequired
         );
         await this.dismissKeyboard();
-        await this.tapLookupIfPresent();
+        await this.tapLookupIfPresent(TEST_IDS.tradeIn.reqLookup, TEST_IDS.tradeIn.reqMake);
       } catch {
         /* already filled */
       }
@@ -357,7 +480,9 @@ export class CreateAppraisalPage {
   }
 
   /**
-   * Enter plate, lookup auto-fill, Next → handle mileage / tax validation.
+   * Enter plate → lookup auto-fill (Make/Model/Colour) → the API never
+   * returns Mileage, so fill it ourselves before NEXT rather than clicking
+   * NEXT blind and reacting to a validation failure.
    */
   async completeTradeInStep(registration: string, mileage: string): Promise<void> {
     await this.waitForTradeInStep();
@@ -370,30 +495,51 @@ export class CreateAppraisalPage {
       registration
     );
     await this.dismissKeyboard();
-    await this.tapLookupIfPresent();
-    await browser.pause(2000);
+    await this.tapLookupIfPresent(TEST_IDS.tradeIn.trdLookup, TEST_IDS.tradeIn.trdMake);
     await this.dismissInfoAlertIfPresent();
 
+    await this.fillMileageIfEmpty(TEST_IDS.tradeIn.trdMileage, mileage);
+    await this.ensureTaxExpiryIfNeeded();
     await this.tapNext(TEST_IDS.tradeIn.trdNext);
 
-    // Mileage validation
-    const mileageNeeded = await this.waitForTextContaining(['mileage'], 5000).catch(
-      () => false
-    );
-    const stillTrade = await this.isTradeInVisible();
-    if (mileageNeeded || stillTrade) {
-      clientLog('Mileage required — entering mileage');
-      await this.scrollDown(2);
-      await this.typeInto(
-        [
-          this.id(TEST_IDS.tradeIn.trdMileage),
-          '-ios predicate string:placeholderValue CONTAINS "MILEAGE"',
-        ],
-        mileage
-      );
-      await this.dismissKeyboard();
+    // Safety net: app-side validation (or a NEXT tap that silently didn't
+    // register) still left us on this screen — a couple of retries absorbs
+    // that without failing the whole run outright.
+    for (let attempt = 0; attempt < 2 && (await this.isTradeInVisible()); attempt++) {
+      clientLog('Still on Vehicle Trade In after NEXT — retrying mileage/tax');
+      await this.fillMileageIfEmpty(TEST_IDS.tradeIn.trdMileage, mileage);
       await this.ensureTaxExpiryIfNeeded();
       await this.tapNext(TEST_IDS.tradeIn.trdNext);
+    }
+  }
+
+  /**
+   * MILEAGE is never populated by the registration lookup (confirmed in
+   * TradeIn.mm — the vehicle API response has no mileage field), so this
+   * isn't optional/reactive: fill it whenever it's still blank.
+   */
+  private async fillMileageIfEmpty(fieldId: string, mileage: string): Promise<void> {
+    const selectors = [
+      this.id(fieldId),
+      '-ios predicate string:placeholderValue CONTAINS "MILEAGE"',
+    ];
+    await this.scrollUntilDisplayed(selectors);
+    try {
+      const field = await this.findDisplayed(selectors, 5000);
+      const current = ((await field.getValue().catch(() => '')) || '').trim();
+      // WDA reports the placeholder text itself (e.g. "MILEAGE*") as the
+      // field's value when it's empty rather than an empty string — a plain
+      // length check alone treats an untouched field as "already filled".
+      const isPlaceholder = /^MILEAGE\*?$/i.test(current);
+      if (current.length === 0 || isPlaceholder) {
+        clientLog('Mileage not auto-filled — entering manually');
+        await field.click();
+        await field.clearValue().catch(() => undefined);
+        await field.setValue(mileage);
+        await this.dismissKeyboard();
+      }
+    } catch {
+      /* not visible — NEXT-click validation retry below will surface it */
     }
   }
 
@@ -430,7 +576,7 @@ export class CreateAppraisalPage {
       if (text.includes('DD-MMM') || text.includes('TAX')) {
         clientLog('Setting TAX expiry date');
         await tax.click();
-        await browser.pause(500);
+        await browser.pause(350);
         const done = await $(
           '-ios predicate string:label == "Done" OR name == "Done"'
         );
@@ -498,10 +644,24 @@ export class CreateAppraisalPage {
         8000
       );
       await el.click();
-      await browser.pause(400);
+      await browser.pause(250);
     } catch (err) {
       console.log(`[Damage] Could not tap ${labelFallback}: ${String(err)}`);
     }
+  }
+
+  /**
+   * The top step icons (VEHICLE REQUIRED / TRADE IN / DAMAGE / PHOTOS) jump
+   * straight to that page with no validation gate — TradeIn.mm's
+   * ImagePhotoClick: always calls setMainScrollViewContentOffset:3. Useful
+   * for iterating on the photo-upload step alone instead of re-running the
+   * whole wizard every time.
+   */
+  async jumpToVehiclePhotosTab(): Promise<void> {
+    clientLog('Jumping directly to Vehicle Photos tab');
+    const tab = await this.findDisplayed(['~tradein_tab_vehicle_photos'], 8000);
+    await tab.click();
+    await browser.pause(350);
   }
 
   async waitForPhotosStep(timeoutMs = 20000): Promise<void> {
@@ -526,22 +686,290 @@ export class CreateAppraisalPage {
   async completePhotosStep(labels: readonly string[]): Promise<void> {
     await this.waitForPhotosStep();
     if (!appraisalData.skipPhotos) {
-      await this.addPhotosForLabels([...labels]);
+      await this.addVehiclePhotosForSlots(labels);
     } else {
       clientLog('Skipping photo uploads (APPRAISEE_SKIP_PHOTOS)');
     }
     await this.scrollDown(3);
-    const save = await this.findDisplayed(
-      [
-        this.id(TEST_IDS.tradeIn.photosSave),
-        '~SAVE',
-        '-ios predicate string:label == "SAVE" OR name == "SAVE"',
-      ],
-      12000
-    );
+    const saveSelectors = [
+      this.id(TEST_IDS.tradeIn.photosSave),
+      '~SAVE',
+      '-ios predicate string:label == "SAVE" OR name == "SAVE"',
+    ];
+    const save = await this.findDisplayed(saveSelectors, 12000);
     await save.click();
     clientLog('SAVE tapped — Create Appraisal submitted');
-    await browser.pause(1500);
+    await this.verifySaveSucceeded(saveSelectors);
+  }
+
+  /**
+   * SAVE has no dedicated success signal (no confirmation toast/screen ID
+   * in the app) — treat the SAVE button disappearing as navigation away
+   * from Vehicle Photos (submission went through). If it's still on screen
+   * after the timeout, check for an error toast so the failure carries the
+   * app's own message where possible, then throw either way: a SAVE tap
+   * that silently does nothing must fail the test and stop the script
+   * immediately, not be reported as a pass.
+   */
+  private async verifySaveSucceeded(
+    saveSelectors: string[],
+    timeoutMs = 15000
+  ): Promise<void> {
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+      const stillOnPhotos = await this.findDisplayed(saveSelectors, 500)
+        .then(() => true)
+        .catch(() => false);
+      if (!stillOnPhotos) {
+        clientLog('Appraisal submitted — left the Vehicle Photos step');
+        return;
+      }
+      await browser.pause(300);
+    }
+
+    const errorShown = await this.waitForTextContaining(
+      ['error', 'failed', 'unable', 'try again', 'something went wrong'],
+      2000
+    ).catch(() => false);
+    await dumpPageSource('appraisal_save_failed');
+    throw new Error(
+      errorShown
+        ? 'Create Appraisal SAVE failed — the app showed an error instead of submitting.'
+        : `Create Appraisal SAVE tapped but the app did not leave the Vehicle Photos step within ${timeoutMs}ms — submission likely failed.`
+    );
+  }
+
+  /** `"DRIVER FRONT"` → `"tradein_vehicle_photo_driver_front"` — matches the
+   * identifier TradeIn.mm's cellForItemAtIndexPath assigns per slot. */
+  private vehiclePhotoSlotId(label: string): string {
+    const safe = label.trim().toLowerCase().replace(/\s+/g, '_');
+    return `tradein_vehicle_photo_${safe}`;
+  }
+
+  /**
+   * Vehicle Photos step (page 4) only. Each slot cell is individually
+   * accessible (tradein_vehicle_photo_front / _driver_front / …) and reports
+   * accessibilityValue "empty"/"filled", so this both targets the exact
+   * placeholder and verifies the picked image actually landed in it —
+   * instead of the label-text search addPhotosForLabels uses for the Damage
+   * step's tyre/alloy photos (a different collection view, left unchanged).
+   *
+   * `damageSlotIndices` marks one damage circle on those slots (0-based,
+   * default FRONT + REAR — the two most reliable slots) via EditImageVC's
+   * own damage-marking controls, before SAVE.
+   */
+  async addVehiclePhotosForSlots(
+    labels: readonly string[],
+    damageSlotIndices: readonly number[] = [0, 3]
+  ): Promise<void> {
+    for (let i = 0; i < labels.length; i++) {
+      const label = labels[i];
+      const idSelector = this.id(this.vehiclePhotoSlotId(label));
+      const markDamage = damageSlotIndices.includes(i);
+      clientLog(`Adding vehicle photo: ${label}${markDamage ? ' (with damage marker)' : ''}`);
+
+      let cell;
+      try {
+        await this.scrollUntilDisplayed([idSelector]);
+        cell = await this.findDisplayed([idSelector], 6000);
+      } catch {
+        clientLog(`Vehicle photo slot not found: ${label} — skipping`);
+        continue;
+      }
+
+      await cell.click();
+      // Empty-slot action sheet: Cancel / Camera / Gallery
+      try {
+        const gallery = await $(
+          '-ios predicate string:label == "Gallery" OR name == "Gallery"'
+        );
+        if (await gallery.isDisplayed().catch(() => false)) {
+          await gallery.click();
+        }
+      } catch {
+        /* action sheet not shown — picker may already be open */
+      }
+
+      const picked = await pickLibraryPhotoAtIndex(i, { markDamage });
+      if (!picked) {
+        clientLog(`Could not select a photo for ${label}`);
+        // pickLibraryPhotoAtIndex already tried to recover, but confirm
+        // we're actually back on this step before trusting the next slot's
+        // cell lookup — otherwise every remaining slot fails one-by-one
+        // instead of failing fast with a clear reason.
+        try {
+          await this.waitForPhotosStep(6000);
+        } catch {
+          clientLog(
+            'Could not return to Vehicle Photos after a failed pick — stopping remaining slots'
+          );
+          break;
+        }
+        continue;
+      }
+
+      const verified = await this.verifyVehiclePhotoSlotFilled(idSelector);
+      clientLog(
+        verified
+          ? `Verified photo added for ${label}`
+          : `Could not verify photo for ${label} (slot still reports empty)`
+      );
+    }
+  }
+
+  /**
+   * cellForItemAtIndexPath sets accessibilityValue to "filled" once the slot
+   * holds a real image, or "damaged" once it also has a damage marker
+   * (mirrors the app's own imgBorder-visible / isEdited state) — poll for
+   * either rather than assuming success right after picking. "damaged" is
+   * also a filled state; both count as the photo having landed.
+   */
+  private async verifyVehiclePhotoSlotFilled(
+    idSelector: string,
+    timeoutMs = 6000
+  ): Promise<boolean> {
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+      try {
+        const el = await $(idSelector);
+        const value = await el.getAttribute('value').catch(() => null);
+        if (value === 'filled' || value === 'damaged') return true;
+      } catch {
+        /* retry */
+      }
+      await browser.pause(150);
+    }
+    return false;
+  }
+
+  /**
+   * Same wait-and-poll as verifyVehiclePhotoSlotFilled, but returns the
+   * actual last-seen accessibilityValue (empty/filled/damaged) instead of a
+   * plain boolean, so a mismatch can report what was really on screen.
+   */
+  private async waitForVehiclePhotoSlotValue(
+    idSelector: string,
+    acceptableValues: readonly string[],
+    timeoutMs = 8000
+  ): Promise<string | null> {
+    const deadline = Date.now() + timeoutMs;
+    let last: string | null = null;
+    while (Date.now() < deadline) {
+      try {
+        const el = await $(idSelector);
+        const value = (await el.getAttribute('value').catch(() => null)) as string | null;
+        last = value;
+        if (value && acceptableValues.includes(value)) return value;
+      } catch {
+        /* retry */
+      }
+      await browser.pause(150);
+    }
+    return last;
+  }
+
+  /**
+   * Shared implementation behind addVehiclePhotoWithoutDamage and
+   * addVehiclePhotoWithDamage — targets one slot by side, opens Gallery,
+   * picks a photo (marking damage first if requested), then verifies the
+   * slot's accessibilityValue matches what was actually requested rather
+   * than assuming success. Throws (with a page-source dump) on any mismatch
+   * instead of silently continuing, per the failure-handling requirements;
+   * the framework's afterTest hook already screenshots on any thrown error.
+   */
+  private async addSingleVehiclePhoto(opts: {
+    side: VehiclePhotoSide;
+    image?: string;
+    markDamage: boolean;
+    damageType?: DamageType;
+  }): Promise<void> {
+    const { side, image, markDamage, damageType } = opts;
+    const label = SIDE_TO_LABEL[side];
+    const index = SIDE_ORDER.indexOf(side);
+    const idSelector = this.id(this.vehiclePhotoSlotId(label));
+    const expectedValue = markDamage ? 'damaged' : 'filled';
+    clientLog(
+      `Adding vehicle photo: ${label}` +
+        (image ? ` (image: ${image})` : '') +
+        (markDamage ? ` (damage: ${damageType ?? 'SCRATCH'})` : ' (no damage)')
+    );
+
+    let cell;
+    try {
+      await this.scrollUntilDisplayed([idSelector]);
+      cell = await this.findDisplayed([idSelector], 8000);
+    } catch (err) {
+      await dumpPageSource(`vehicle_photo_slot_not_found_${label}`);
+      throw new Error(
+        `Vehicle photo slot "${label}" not found on the Vehicle Photos step: ${String(err)}`
+      );
+    }
+
+    await cell.click();
+    // Empty-slot action sheet: Cancel / Camera / Gallery
+    try {
+      const gallery = await $(
+        '-ios predicate string:label == "Gallery" OR name == "Gallery"'
+      );
+      if (await gallery.isDisplayed().catch(() => false)) {
+        await gallery.click();
+      }
+    } catch {
+      /* action sheet not shown — picker may already be open */
+    }
+
+    const picked = await pickLibraryPhotoAtIndex(index, { markDamage, damageType });
+    if (!picked) {
+      await dumpPageSource(`vehicle_photo_pick_failed_${label}`);
+      // Try to land back on a known screen so a test running several of
+      // these calls isn't left stranded on the picker — but this is
+      // diagnostics only, the failure itself is still reported below.
+      await this.waitForPhotosStep(6000).catch(() => undefined);
+      throw new Error(
+        `Could not select a photo for "${label}" — the Gallery picker never returned an image ` +
+          `to the app (see the captured page source for the exact on-screen state at the time).`
+      );
+    }
+
+    const actualValue = await this.waitForVehiclePhotoSlotValue(
+      idSelector,
+      [expectedValue],
+      8000
+    );
+    if (actualValue !== expectedValue) {
+      await dumpPageSource(`vehicle_photo_state_mismatch_${label}`);
+      throw new Error(
+        `Vehicle photo "${label}": expected slot state "${expectedValue}" but observed ` +
+          `"${actualValue ?? 'unknown'}" — ` +
+          (markDamage
+            ? 'the damage marker may not have been applied.'
+            : 'an unexpected damage marker may have been applied.')
+      );
+    }
+    clientLog(`Verified ${label}: ${actualValue}`);
+  }
+
+  /**
+   * Add a photo to one vehicle-photo slot with no damage marker.
+   * Reuses the same slot-targeting / picker / verification logic as
+   * addVehiclePhotoWithDamage — see addSingleVehiclePhoto.
+   */
+  async addVehiclePhotoWithoutDamage(opts: AddVehiclePhotoOptions): Promise<void> {
+    await this.addSingleVehiclePhoto({ ...opts, markDamage: false });
+  }
+
+  /**
+   * Add a photo to one vehicle-photo slot and mark it with a damage circle
+   * (EditImageVC's own damage-type controls — default SCRATCH). The app has
+   * no per-side "Rear"/"Front/Rear" damage option; "side" here selects which
+   * photo slot gets the marker, matching the app's real per-photo model.
+   */
+  async addVehiclePhotoWithDamage(opts: AddVehiclePhotoWithDamageOptions): Promise<void> {
+    await this.addSingleVehiclePhoto({
+      ...opts,
+      markDamage: true,
+      damageType: opts.damage ?? 'SCRATCH',
+    });
   }
 
   /**
@@ -554,7 +982,7 @@ export class CreateAppraisalPage {
       const tapped = await this.tapAddNearLabel(label);
       if (tapped) {
         await pickFirstLibraryPhoto();
-        await browser.pause(600);
+        await browser.pause(350);
       } else {
         clientLog(`ADD control not found for ${label} — skipping`);
       }
@@ -614,7 +1042,7 @@ export class CreateAppraisalPage {
         for (const el of els) {
           if (await el.isDisplayed().catch(() => false)) {
             await el.click();
-            await browser.pause(700);
+            await browser.pause(450);
             return true;
           }
         }

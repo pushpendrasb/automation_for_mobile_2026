@@ -66,12 +66,25 @@ function loadHistory() {
   }
 }
 
+const MAX_HISTORY_PER_PROJECT = 10;
+
 function saveHistoryEntry(entry) {
   ensureDataDir();
   const list = loadHistory();
   list.unshift(entry);
-  // Keep enough runs so each archived report stays discoverable
-  fs.writeFileSync(HISTORY_FILE, JSON.stringify(list.slice(0, 25), null, 2));
+  // Cap per project, not globally — a project run often (e.g. during active
+  // development) was otherwise evicting other projects' history entirely
+  // once the old shared cap of 25 total runs filled up. Order stays
+  // newest-first since `list` already is.
+  const perProjectCount = new Map();
+  const kept = [];
+  for (const item of list) {
+    const count = perProjectCount.get(item.projectId) || 0;
+    if (count >= MAX_HISTORY_PER_PROJECT) continue;
+    kept.push(item);
+    perProjectCount.set(item.projectId, count + 1);
+  }
+  fs.writeFileSync(HISTORY_FILE, JSON.stringify(kept, null, 2));
 }
 
 /**
