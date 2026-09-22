@@ -216,6 +216,9 @@ async function resolveProject(preferred, resolveScriptLanguage) {
  *   appSourcePath?: string,
  *   appSourceRepoUrl?: string,
  *   existingTeamId?: string,
+ *   existingPlatform?: import('./lib/platformIds').TargetPlatform,
+ *   existingIosBundleId?: string,
+ *   existingAndroidPackage?: string,
  * }} [extra]
  */
 async function collectEnvUpdates(projectId, extra = {}) {
@@ -231,30 +234,56 @@ async function collectEnvUpdates(projectId, extra = {}) {
   const alreadyAsked = Boolean(
     extra.platform && (extra.iosBundleId || extra.androidPackage),
   );
-  // Bundle ID / Android package still get asked (not silently skipped) even
-  // for an existing project — but pre-filled from project.config.js as the
-  // default, so pressing Enter accepts it in one keystroke while typing a
-  // different value still overrides it (e.g. testing a staging build).
-  const ids = alreadyAsked
-    ? {
-        platform: /** @type {import('./lib/platformIds').TargetPlatform} */ (
-          extra.platform
-        ),
-        iosBundleId: extra.iosBundleId || defaultBundle,
-        androidPackage: extra.androidPackage || defaultPackage || defaultBundle,
+
+  /** @type {import('./lib/platformIds').PlatformAppIds} */
+  let ids;
+  if (alreadyAsked) {
+    ids = {
+      platform: /** @type {import('./lib/platformIds').TargetPlatform} */ (
+        extra.platform
+      ),
+      iosBundleId: extra.iosBundleId || defaultBundle,
+      androidPackage: extra.androidPackage || defaultPackage || defaultBundle,
+    };
+  } else if (extra.existingPlatform) {
+    // This machine already ran setup for this project before: reuse the
+    // platform choice silently (no "iOS/Android/Both" question), and only ask
+    // whether to CHANGE the bundle ID / package — a yes/no, not a full
+    // re-type — since the answer is almost always "no".
+    console.log(`\n=== Platforms ===\n  Platform on file: ${extra.existingPlatform}`);
+    let iosBundleId = extra.existingIosBundleId || defaultBundle;
+    let androidPackage = extra.existingAndroidPackage || defaultPackage || defaultBundle;
+
+    if (extra.existingPlatform === 'iOS' || extra.existingPlatform === 'Both') {
+      const change = await askYesNo(`Change iOS bundle ID (${iosBundleId})?`, false);
+      if (change) {
+        iosBundleId = await ask('iOS bundle ID', iosBundleId);
       }
-    : await askPlatformAndAppIds(projectId, {
-        platform: extra.platform,
-        iosBundleId: extra.iosBundleId || defaultBundle,
-        androidPackage: extra.androidPackage || defaultPackage || defaultBundle,
-        defaultBundle,
-      });
+    }
+    if (extra.existingPlatform === 'Android' || extra.existingPlatform === 'Both') {
+      const change = await askYesNo(`Change Android app package (${androidPackage})?`, false);
+      if (change) {
+        androidPackage = await ask('Android app package', androidPackage);
+      }
+    }
+    ids = { platform: extra.existingPlatform, iosBundleId, androidPackage };
+  } else {
+    ids = await askPlatformAndAppIds(projectId, {
+      platform: extra.platform,
+      iosBundleId: extra.iosBundleId || defaultBundle,
+      androidPackage: extra.androidPackage || defaultPackage || defaultBundle,
+      defaultBundle,
+    });
+  }
 
   const platform = ids.platform;
 
   /** @type {Record<string, string>} */
   const updates = {
     AUTOMATION_SCRIPT_LANGUAGE: extra.scriptLanguage || 'javascript',
+    // Remembered so the next run of this project on this Mac can skip the
+    // "iOS/Android/Both" question entirely instead of asking it again.
+    AUTOMATION_TARGET_PLATFORM: platform,
     APPIUM_HOST: '127.0.0.1',
     APPIUM_PORT: '4723',
     APPIUM_SHOW_XCODE_LOG: 'true',
@@ -539,10 +568,17 @@ async function main() {
   const effectiveLanguage =
     detected === 'unknown' ? await resolveScriptLanguage() : detected;
 
-  // Reuse this project's existing Team ID as a default so re-running setup on
-  // an existing project (e.g. configuring a new Mac for the same app) doesn't
-  // force retyping it — only device-specific values (UDID) need to change.
+  // Reuse this project's existing Team ID / platform / app ids as defaults so
+  // re-running setup on an existing project (e.g. configuring a new Mac for
+  // the same app) doesn't force retyping them — only device-specific values
+  // (UDID) need to change.
   const existingEnv = readEnvFile(path.join(pDir, '.env'));
+  const validPlatforms = ['iOS', 'Android', 'Both'];
+  const existingPlatform = validPlatforms.includes(existingEnv.AUTOMATION_TARGET_PLATFORM)
+    ? /** @type {import('./lib/platformIds').TargetPlatform} */ (
+        existingEnv.AUTOMATION_TARGET_PLATFORM
+      )
+    : undefined;
 
   const updates = await collectEnvUpdates(projectId, {
     scriptLanguage: effectiveLanguage,
@@ -552,6 +588,9 @@ async function main() {
     appSourcePath: resolved.appSourcePath,
     appSourceRepoUrl: resolved.appSourceRepoUrl,
     existingTeamId: existingEnv.IOS_TEAM_ID,
+    existingPlatform,
+    existingIosBundleId: existingEnv.IOS_BUNDLE_ID,
+    existingAndroidPackage: existingEnv.ANDROID_APP_PACKAGE,
   });
 
   // Real iPhone: build+install WebDriverAgent DURING setup (before first test).
