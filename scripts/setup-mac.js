@@ -133,8 +133,11 @@ function readDefaultIds(pDir) {
 
 /**
  * Pick or create a project folder under projects/.
+ * Only asks for a script language when one is actually needed (creating a new
+ * project) — an existing project's language is auto-detected from its files,
+ * so it should never be asked before we even know "existing vs new".
  * @param {string|undefined} preferred
- * @param {import('./lib/language').ScriptLanguage} scriptLanguage
+ * @param {() => Promise<import('./lib/language').ScriptLanguage>} resolveScriptLanguage
  * @returns {Promise<{
  *   projectId: string,
  *   platform?: import('./lib/platformIds').TargetPlatform,
@@ -144,7 +147,7 @@ function readDefaultIds(pDir) {
  *   appSourceRepoUrl?: string,
  * }>}
  */
-async function resolveProject(preferred, scriptLanguage) {
+async function resolveProject(preferred, resolveScriptLanguage) {
   const projects = listProjects();
   if (preferred) {
     const p = projectDir(preferred);
@@ -162,6 +165,7 @@ async function resolveProject(preferred, scriptLanguage) {
   ]);
 
   if (action.startsWith('Create')) {
+    const scriptLanguage = await resolveScriptLanguage();
     const { createProject } = require('./new-project');
     const created = await createProject({
       skipLanguageAsk: true,
@@ -180,6 +184,7 @@ async function resolveProject(preferred, scriptLanguage) {
 
   if (!projects.length) {
     console.log('No projects found. Creating one from template…');
+    const scriptLanguage = await resolveScriptLanguage();
     const { createProject } = require('./new-project');
     const created = await createProject({
       skipLanguageAsk: true,
@@ -476,25 +481,35 @@ async function main() {
     }
   }
 
-  // Language first — scaffolds JS / TS / Python templates accordingly.
-  /** @type {import('./lib/language').ScriptLanguage} */
-  let scriptLanguage = 'javascript';
-  if (opts.language) {
-    const normalized = normalizeLanguage(opts.language);
-    if (!normalized) {
-      console.error(
-        `Unknown --language ${opts.language}. Use javascript, typescript, or python.`,
-      );
-      process.exit(1);
+  // Ask the language only when it's actually needed — creating a new project,
+  // or an existing one whose language can't be auto-detected from its files.
+  // Existing projects (VetPal, RosKids, ...) are detected below and never
+  // need this question at all.
+  /** @type {import('./lib/language').ScriptLanguage | null} */
+  let resolvedLanguage = null;
+  /** @returns {Promise<import('./lib/language').ScriptLanguage>} */
+  async function resolveScriptLanguage() {
+    if (resolvedLanguage) return resolvedLanguage;
+    if (opts.language) {
+      const normalized = normalizeLanguage(opts.language);
+      if (!normalized) {
+        console.error(
+          `Unknown --language ${opts.language}. Use javascript, typescript, or python.`,
+        );
+        process.exit(1);
+      }
+      resolvedLanguage = normalized;
+      console.log(`\nScript language: ${languageLabel(resolvedLanguage)} (--language flag)`);
+    } else if (opts.yes) {
+      resolvedLanguage = 'javascript';
+      console.log('\nScript language: JavaScript (default with --yes)');
+    } else {
+      resolvedLanguage = await askScriptLanguage({});
     }
-    scriptLanguage = normalized;
-    console.log(`\nScript language: ${languageLabel(scriptLanguage)} (--language flag)`);
-  } else if (opts.yes) {
-    scriptLanguage = 'javascript';
-    console.log('\nScript language: JavaScript (default with --yes)');
-  } else {
-    scriptLanguage = await askScriptLanguage({});
+    return resolvedLanguage;
   }
+
+  const resolved = await resolveProject(opts.project, resolveScriptLanguage);
 
   if (!opts.skipTools) {
     const doTools = opts.yes
@@ -503,22 +518,22 @@ async function main() {
     if (doTools) installAppiumStack();
   }
 
-  const resolved = await resolveProject(opts.project, scriptLanguage);
   const projectId = resolved.projectId;
   const pDir = projectDir(projectId);
   const detected = detectProjectLanguage(pDir);
   if (
     detected !== 'unknown' &&
-    detected !== scriptLanguage &&
+    resolvedLanguage &&
+    detected !== resolvedLanguage &&
     opts.project
   ) {
     console.log(
       `\nNote: projects/${projectId} looks like ${detected}; ` +
-        `installing that stack (your language choice was ${scriptLanguage}).`,
+        `installing that stack (your language choice was ${resolvedLanguage}).`,
     );
   }
   const effectiveLanguage =
-    detected === 'unknown' ? scriptLanguage : /** @type {typeof scriptLanguage} */ (detected);
+    detected === 'unknown' ? await resolveScriptLanguage() : detected;
 
   // Reuse this project's existing Team ID as a default so re-running setup on
   // an existing project (e.g. configuring a new Mac for the same app) doesn't
