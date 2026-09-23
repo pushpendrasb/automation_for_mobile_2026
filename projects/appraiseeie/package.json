@@ -15,6 +15,7 @@
     "test:ios:signin:all": "wdio run ./wdio.ios.conf.js --spec ./tests/auth/**/*.test.ts",
     "test:ios:appraisal": "wdio run ./wdio.ios.conf.js --spec ./tests/appraisal/**/*.test.ts",
     "test:ios:appraisal:success": "wdio run ./wdio.ios.conf.js --spec ./tests/appraisal/createAppraisal.flow.test.ts",
+    "test:ios:appraisal:failure": "wdio run ./wdio.ios.conf.js --spec ./tests/appraisal/createAppraisal.negative.test.ts",
     "test:android:smoke": "wdio run ./wdio.android.conf.js --spec ./tests/smoke/launch.smoke.test.ts",
     "test:android:signin": "wdio run ./wdio.android.conf.js --spec ./tests/auth/login.positive.test.ts",
     "test:android:signin:all": "wdio run ./wdio.android.conf.js --spec ./tests/auth/**/*.test.ts",

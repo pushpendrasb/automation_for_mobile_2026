@@ -254,6 +254,30 @@ function readEnvFile(projectId) {
 }
 
 /**
+ * Update (or add) a single KEY=VALUE line in a project's .env, preserving
+ * every other line as-is. Used for device-specific values (IOS_DEVICE_UDID)
+ * that differ per machine when the same project checkout is copied to
+ * another Mac with a different connected iPhone.
+ */
+function writeEnvVar(projectId, key, value) {
+  const envPath = path.join(PROJECTS_DIR, projectId, '.env');
+  const lines = fs.existsSync(envPath)
+    ? fs.readFileSync(envPath, 'utf8').split(/\r?\n/)
+    : [];
+  const linePattern = new RegExp(`^\\s*${key}\\s*=`);
+  const newLine = `${key}=${value}`;
+  const idx = lines.findIndex((l) => linePattern.test(l));
+  if (idx >= 0) {
+    lines[idx] = newLine;
+  } else {
+    // Drop a single trailing blank line so the new var doesn't pile up gaps
+    if (lines.length && lines[lines.length - 1] === '') lines.pop();
+    lines.push(newLine);
+  }
+  fs.writeFileSync(envPath, lines.join('\n') + '\n');
+}
+
+/**
  * Env readiness for a project (no secret values returned).
  */
 function checkProjectEnv(projectId) {
@@ -310,8 +334,22 @@ function getDevicesStatus(projectId) {
 
   const iosOut = runCmd('xcrun xctrace list devices 2>/dev/null || true');
   const iosDevices = [];
+  // xctrace groups output under "== Devices ==" (online), "== Devices
+  // Offline ==", and "== Simulators ==" headers. Only the first section is
+  // actually connected right now — an offline-but-previously-paired device
+  // (e.g. left in this list from another Mac) matches the same
+  // "Name (version) (UDID)" pattern and must not be reported as connected.
+  let inOnlineSection = false;
   for (const line of iosOut.split('\n')) {
-    // "Name (version) (UDID)" — skip simulators section headers loosely
+    const header = line.match(/^==\s*(.+?)\s*==$/);
+    if (header) {
+      inOnlineSection = header[1].trim().toLowerCase() === 'devices';
+      continue;
+    }
+    if (!inOnlineSection) continue;
+    // "Name (version) (UDID)" — the Mac itself matches this shape too
+    // ("Pushpendra's Mac mini (UUID)") but has no version group, so the
+    // 3-group pattern already excludes it.
     const m = line.match(/^(.+?)\s+\(([^)]+)\)\s+\(([0-9A-Fa-f-]+)\)$/);
     if (!m) continue;
     const name = m[1].trim();
@@ -1238,6 +1276,22 @@ const server = http.createServer(async (req, res) => {
     if (method === 'GET' && envMatch) {
       const id = decodeURIComponent(envMatch[1]);
       return json(res, checkProjectEnv(id));
+    }
+
+    // Device-specific — the same project checkout copied to another Mac
+    // needs a different IOS_DEVICE_UDID for whatever iPhone is plugged into
+    // that machine. The UI confirms with the user before calling this.
+    const udidMatch = pathname.match(/^\/api\/projects\/([^/]+)\/env\/udid$/);
+    if (method === 'POST' && udidMatch) {
+      const id = decodeURIComponent(udidMatch[1]);
+      if (!isRealProject(id)) return json(res, { error: 'Not found' }, 404);
+      const body = await readBody(req);
+      const udid = String(body.udid || '').trim();
+      if (!/^[0-9A-Fa-f-]{8,64}$/.test(udid)) {
+        return json(res, { ok: false, error: 'Invalid UDID' }, 400);
+      }
+      writeEnvVar(id, 'IOS_DEVICE_UDID', udid);
+      return json(res, { ok: true, udid });
     }
 
     const reportsMatch = pathname.match(/^\/api\/projects\/([^/]+)\/reports$/);

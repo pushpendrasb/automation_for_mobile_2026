@@ -27,6 +27,7 @@
     deviceSummary: $('deviceSummary'),
     deviceSub: $('deviceSub'),
     btnDevicesRefresh: $('btnDevicesRefresh'),
+    btnDeviceUpdateUdid: $('btnDeviceUpdateUdid'),
     summaryValue: $('summaryValue'),
     summarySub: $('summarySub'),
     btnSummaryReport: $('btnSummaryReport'),
@@ -463,6 +464,76 @@
     } catch (err) {
       els.deviceSummary.textContent = 'Error';
       els.deviceSub.textContent = String(err.message || err);
+    }
+  }
+
+  /**
+   * IOS_DEVICE_UDID in a project's .env is device-specific — copying the
+   * same checkout to another Mac means whatever iPhone is plugged into
+   * that machine has a different UDID. Detect the connected device and, on
+   * confirmation, write it into .env so this project runs there without
+   * hand-editing the file.
+   */
+  async function updateProjectUdid() {
+    if (!selectedProjectId) {
+      alert('Select a project first.');
+      return;
+    }
+    let d;
+    try {
+      d = await api(`/api/devices?projectId=${encodeURIComponent(selectedProjectId)}`);
+    } catch (err) {
+      alert(String(err.message || err));
+      return;
+    }
+    const devices = d.ios?.devices || [];
+    if (!devices.length) {
+      alert('No iOS device detected. Connect and unlock the iPhone, then try again.');
+      return;
+    }
+
+    let device = devices[0];
+    if (devices.length > 1) {
+      const listing = devices
+        .map((x, i) => `${i + 1}. ${x.name} (${x.version}) — ${x.udid}`)
+        .join('\n');
+      const pick = prompt(
+        `Multiple iOS devices detected:\n${listing}\n\nEnter a number:`,
+        '1'
+      );
+      const idx = Number(pick) - 1;
+      if (!pick || Number.isNaN(idx) || !devices[idx]) return;
+      device = devices[idx];
+    }
+
+    const current = d.ios?.configuredUdid || '';
+    if (current === device.udid) {
+      alert(`Already set to this device (${device.name}).`);
+      return;
+    }
+
+    const ok = confirm(
+      `Change the iOS device UDID for this project?\n\n` +
+        `Device: ${device.name} (${device.version})\n` +
+        `New UDID: ${device.udid}\n` +
+        (current ? `Current: ${current}` : 'Current: not set')
+    );
+    if (!ok) return;
+
+    try {
+      await api(
+        `/api/projects/${encodeURIComponent(selectedProjectId)}/env/udid`,
+        { method: 'POST', body: JSON.stringify({ udid: device.udid }) }
+      );
+      setRunAck({
+        title: 'Project UDID updated',
+        detail: `${device.name} — ${device.udid}`,
+        state: 'idle',
+        show: true,
+      });
+      await refreshDevices(selectedProjectId);
+    } catch (err) {
+      alert(String(err.message || err));
     }
   }
 
@@ -1407,6 +1478,7 @@
   els.btnDevicesRefresh.addEventListener('click', () =>
     refreshDevices(selectedProjectId || '')
   );
+  els.btnDeviceUpdateUdid.addEventListener('click', updateProjectUdid);
   els.btnBack.addEventListener('click', showProjects);
   els.btnStopRun.addEventListener('click', stopRun);
   els.btnStopAck?.addEventListener('click', stopRun);
