@@ -14,14 +14,48 @@
     "test:ios:signin:positive": "wdio run ./wdio.ios.conf.js --spec ./tests/auth/signIn.positive.test.js",
     "test:ios:signin:negative": "wdio run ./wdio.ios.conf.js --spec ./tests/auth/signIn.negative.test.js",
     "test:ios:signin:failure-demo": "wdio run ./wdio.ios.conf.js --spec ./tests/demo/signIn.wrongPassword.failure.demo.js",
+    "test:ios:signup": "wdio run ./wdio.ios.conf.js --spec ./tests/auth/signUp.positive.test.js",
+    "test:ios:signup:exact": "REG_EMAIL_UNIQUE=false wdio run ./wdio.ios.conf.js --spec ./tests/auth/signUp.positive.test.js",
     "test:android:signin": "wdio run ./wdio.android.conf.js --spec ./tests/auth/signIn.negative.test.js --spec ./tests/auth/signIn.positive.test.js",
     "test:android:signin:positive": "wdio run ./wdio.android.conf.js --spec ./tests/auth/signIn.positive.test.js",
     "test:android:signin:negative": "wdio run ./wdio.android.conf.js --spec ./tests/auth/signIn.negative.test.js",
     "test:android:signin:failure-demo": "wdio run ./wdio.android.conf.js --spec ./tests/demo/signIn.wrongPassword.failure.demo.js",
+    "test:android:signup": "wdio run ./wdio.android.conf.js --spec ./tests/auth/signUp.positive.test.js",
+    "test:android:signup:exact": "REG_EMAIL_UNIQUE=false wdio run ./wdio.android.conf.js --spec ./tests/auth/signUp.positive.test.js",
     "check:devices": "AUTOMATION_PROJECT_ROOT=. node ../../framework/utils/checkDevices.js",
     "check:devices:ios": "AUTOMATION_PROJECT_ROOT=. node ../../framework/utils/checkDevices.js ios",
     "check:devices:android": "AUTOMATION_PROJECT_ROOT=. node ../../framework/utils/checkDevices.js android",
     "report:open": "open ./reports/vetportal-report.html || xdg-open ./reports/vetportal-report.html"
+  },
+  "dashboard": {
+    "runInputs": [
+      {
+        "key": "REG_EMAIL_BASE",
+        "label": "Email",
+        "type": "email",
+        "placeholder": "pushpendra@appdesign.ie",
+        "pattern": "[A-Za-z0-9._-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}",
+        "hint": "letters, digits, . _ - before the @ (the app rejects +)",
+        "scripts": ["test:ios:signup", "test:ios:signup:exact", "test:android:signup", "test:android:signup:exact"]
+      },
+      {
+        "key": "REG_MOBILE",
+        "label": "Mobile (+353)",
+        "type": "tel",
+        "placeholder": "8XXXXXXXX",
+        "pattern": "8[0-9]{8}",
+        "hint": "9 digits starting with 8, without +353",
+        "scripts": ["test:ios:signup", "test:ios:signup:exact", "test:android:signup", "test:android:signup:exact"]
+      },
+      {
+        "key": "REG_EMAIL_UNIQUE",
+        "label": "Type email exactly (no .reg timestamp)",
+        "type": "checkbox",
+        "checkedValue": "false",
+        "pattern": "true|false",
+        "scripts": ["test:ios:signup", "test:android:signup"]
+      }
+    ]
   },
   "engines": {
     "node": ">=18"

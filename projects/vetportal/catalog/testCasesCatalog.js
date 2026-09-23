@@ -112,6 +112,30 @@ const ALL_TEST_CASES = [
     passWhen: 'Home / Subscribe Vets is displayed',
     failWhen: 'App rejects the password — report shows the app error message and a screenshot',
   },
+
+  // ---------------------------------------------------------------- Registration
+  {
+    caseId: 'VPO-SU-P01',
+    module: 'Registration',
+    type: 'positive',
+    title: 'New vet registers with all details and a gallery profile photo',
+    understanding:
+      'A new vet user can register from Sign In → Register Now (dev API, unique email per run).',
+    steps: [
+      'Sign In → Register Now',
+      'Profile Image → Photos Library → pick photo → Choose',
+      'First name Pushpendra, Middle name empty, Last name Singh',
+      'Email pushpendra.reg<timestamp>@appdesign.ie (or exact pushpendra@appdesign.ie when REG_EMAIL_UNIQUE=false), Password and Mobile from .env',
+      'Qualification Bachelor of Veterinary Science, Vet council reg. no. 02/55',
+      'Map icon → search "dublin" → pick the second suggestion',
+      'Eircode from the picked place (fallback D01 F5P2)',
+      'Tick Veterinary Council agreement and Terms & Conditions',
+      'Tap Register Now',
+    ],
+    expected: '"You have successfully created your account" alert; Ok returns to Sign In',
+    passWhen: 'Success alert shown',
+    failWhen: 'A validation or API error toast is shown, or no response within 45s',
+  },
 ];
 
 /**

@@ -419,11 +419,68 @@ function scriptTitle(name) {
   return name.replace(/^test:/, '').replace(/:/g, ' · ').replace(/-/g, ' ');
 }
 
+/**
+ * Per-run inputs a project declares in package.json under `dashboard.runInputs`:
+ *   { key, label, type: 'text'|'email'|'tel'|'checkbox', placeholder?, hint?,
+ *     pattern?, checkedValue?, scripts: [scriptName, ...] }
+ * The dashboard shows them on the listed script rows and passes the values to
+ * that run as environment variables (they win over the project's .env).
+ */
+function readRunInputs(projectId) {
+  const pkgPath = path.join(PROJECTS_DIR, projectId, 'package.json');
+  if (!fs.existsSync(pkgPath)) return [];
+  const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
+  const inputs = pkg.dashboard?.runInputs;
+  if (!Array.isArray(inputs)) return [];
+  return inputs.filter(
+    (i) => i && /^[A-Z][A-Z0-9_]*$/.test(String(i.key || '')) && Array.isArray(i.scripts)
+  );
+}
+
+/** Inputs for one script, without the `scripts` list (safe to send to the UI). */
+function inputsForScript(allInputs, scriptName) {
+  return allInputs
+    .filter((i) => i.scripts.includes(scriptName))
+    .map(({ scripts: _scripts, ...rest }) => rest);
+}
+
+/**
+ * Validate UI-supplied values against the script's declared inputs.
+ * Undeclared keys are rejected so the dashboard can't set arbitrary env vars.
+ * Blank values are dropped, leaving .env / defaults in charge.
+ * @returns {{ ok: true, env: Record<string, string> } | { ok: false, error: string }}
+ */
+function sanitizeRunEnv(projectId, script, rawEnv) {
+  const env = {};
+  if (!rawEnv || typeof rawEnv !== 'object') return { ok: true, env };
+  const allowed = new Map(
+    inputsForScript(readRunInputs(projectId), script).map((i) => [i.key, i])
+  );
+  for (const [key, raw] of Object.entries(rawEnv)) {
+    const def = allowed.get(key);
+    if (!def) return { ok: false, error: `${key} is not an input of ${script}` };
+    const value = String(raw ?? '').trim();
+    if (!value) continue;
+    if (value.length > 200 || /[\r\n\0]/.test(value)) {
+      return { ok: false, error: `${def.label || key} has an invalid value` };
+    }
+    if (def.pattern && !new RegExp(`^(?:${def.pattern})$`).test(value)) {
+      return {
+        ok: false,
+        error: `${def.label || key}: ${def.hint || 'value does not match the expected format'}`,
+      };
+    }
+    env[key] = value;
+  }
+  return { ok: true, env };
+}
+
 function listScripts(projectId) {
   const pkgPath = path.join(PROJECTS_DIR, projectId, 'package.json');
   if (!fs.existsSync(pkgPath)) return [];
   const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
   const scripts = pkg.scripts || {};
+  const runInputs = readRunInputs(projectId);
   return Object.keys(scripts)
     .filter((k) => !HIDDEN_SCRIPTS.has(k))
     .map((name) => ({
@@ -431,6 +488,7 @@ function listScripts(projectId) {
       title: scriptTitle(name),
       group: scriptGroup(name),
       command: scripts[name],
+      inputs: inputsForScript(runInputs, name),
       runnable:
         name.startsWith('test') ||
         name.startsWith('check:') ||
@@ -799,13 +857,14 @@ function pumpQueue() {
   if (activeRun && activeRun.status === 'running') return;
   const next = runQueue.shift();
   if (!next) return;
-  beginScriptRun(next.projectId, next.script, { fromQueue: true });
+  beginScriptRun(next.projectId, next.script, { fromQueue: true, env: next.env });
 }
 
 /**
  * Start immediately or enqueue if busy.
+ * @param {Record<string, string>} [rawEnv] values from the script's run inputs
  */
-function enqueueOrRun(projectId, script) {
+function enqueueOrRun(projectId, script, rawEnv) {
   if (!isRealProject(projectId)) {
     return { ok: false, error: `Unknown project: ${projectId}` };
   }
@@ -813,8 +872,12 @@ function enqueueOrRun(projectId, script) {
   const found = scripts.find((s) => s.name === script);
   if (!found) return { ok: false, error: `Unknown script: ${script}` };
 
+  const checked = sanitizeRunEnv(projectId, script, rawEnv);
+  if (!checked.ok) return checked;
+  const env = checked.env;
+
   if (activeRun && activeRun.status === 'running') {
-    runQueue.push({ projectId, script });
+    runQueue.push({ projectId, script, env });
     return {
       ok: true,
       queued: true,
@@ -823,12 +886,18 @@ function enqueueOrRun(projectId, script) {
       run: publicRun(),
     };
   }
-  return beginScriptRun(projectId, script);
+  return beginScriptRun(projectId, script, { env });
 }
 
+/**
+ * @param {{ fromQueue?: boolean, env?: Record<string, string> }} [opts]
+ *   env: already-sanitized run-input values, layered over process.env.
+ */
 function beginScriptRun(projectId, script, opts = {}) {
   const runId = `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
   const cwd = path.join(PROJECTS_DIR, projectId);
+  const runEnv = opts.env || {};
+  const envLines = Object.entries(runEnv).map(([k, v]) => `env: ${k}=${v}`);
   activeRun = {
     id: runId,
     projectId,
@@ -841,6 +910,7 @@ function beginScriptRun(projectId, script, opts = {}) {
       opts.fromQueue ? '(from queue)' : '',
       `$ npm run ${script}`,
       `cwd: ${cwd}`,
+      ...envLines,
       '',
     ].filter(Boolean),
     reports: [],
@@ -849,7 +919,7 @@ function beginScriptRun(projectId, script, opts = {}) {
 
   runChild = spawn('npm', ['run', script], {
     cwd,
-    env: { ...process.env, FORCE_COLOR: '0' },
+    env: { ...process.env, ...runEnv, FORCE_COLOR: '0' },
     shell: false,
     // New process group so Stop can kill npm + WDIO children together
     detached: process.platform !== 'win32',
@@ -888,12 +958,15 @@ function beginScriptRun(projectId, script, opts = {}) {
   return { ok: true, queued: false, run: publicRun(), queue: runQueue.slice() };
 }
 
-function enqueueMany(projectId, scripts) {
+/**
+ * @param {Record<string, Record<string, string>>} [envByScript] run-input values per script
+ */
+function enqueueMany(projectId, scripts, envByScript = {}) {
   const list = (scripts || []).filter(Boolean);
   if (!list.length) return { ok: false, error: 'No scripts provided' };
   const results = [];
   for (const script of list) {
-    results.push(enqueueOrRun(projectId, script));
+    results.push(enqueueOrRun(projectId, script, envByScript?.[script]));
   }
   return {
     ok: results.every((r) => r.ok),
@@ -1331,7 +1404,7 @@ const server = http.createServer(async (req, res) => {
       const body = await readBody(req);
       return json(
         res,
-        enqueueOrRun(String(body.projectId || ''), String(body.script || ''))
+        enqueueOrRun(String(body.projectId || ''), String(body.script || ''), body.env)
       );
     }
 
@@ -1339,7 +1412,7 @@ const server = http.createServer(async (req, res) => {
       const body = await readBody(req);
       return json(
         res,
-        enqueueMany(String(body.projectId || ''), body.scripts || [])
+        enqueueMany(String(body.projectId || ''), body.scripts || [], body.envByScript)
       );
     }
 

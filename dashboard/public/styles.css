@@ -1242,6 +1242,63 @@ body.theme-dark .btn-run.is-busy {
   color: var(--muted);
 }
 
+/* Per-run inputs (e.g. signup email / mobile) under a script's title. */
+.script-row .script-info {
+  min-width: 0;
+}
+
+.script-inputs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem 0.7rem;
+  margin-top: 0.5rem;
+}
+
+.script-input {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.script-input input {
+  width: 15rem;
+  max-width: 100%;
+  padding: 0.35rem 0.55rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--card-bg);
+  color: var(--ink);
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 400;
+}
+
+.script-input input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 25%, transparent);
+}
+
+.script-input input:invalid:not(:placeholder-shown) {
+  border-color: var(--danger);
+}
+
+.script-input-check {
+  flex-direction: row;
+  align-items: center;
+  gap: 0.35rem;
+  align-self: flex-end;
+  padding-bottom: 0.35rem;
+  cursor: pointer;
+}
+
+.script-input-check input {
+  width: auto;
+}
+
 .empty-platform {
   margin: 0.5rem 0 0;
   padding: 1.25rem;

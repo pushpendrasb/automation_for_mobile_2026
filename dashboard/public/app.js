@@ -649,10 +649,86 @@
     return t;
   }
 
+  /** localStorage key that remembers a run-input value per project + script. */
+  function runInputStorageKey(projectId, scriptName, key) {
+    return `runInput:${projectId}:${scriptName}:${key}`;
+  }
+
   /**
-   * Build a script row (checkbox + title + Run).
+   * Render the script's declared run inputs (e.g. signup email / mobile).
+   * Blank fields fall back to the project's .env when the script runs.
    * @param {string} projectId
-   * @param {{ name: string, title: string, selectable?: boolean, runnable?: boolean }} s
+   * @param {{ name: string, inputs?: Array<{ key: string, label?: string, type?: string,
+   *   placeholder?: string, pattern?: string, hint?: string, checkedValue?: string }> }} s
+   * @returns {HTMLElement | null}
+   */
+  function createRunInputs(projectId, s) {
+    if (!s.inputs?.length) return null;
+    const wrap = document.createElement('div');
+    wrap.className = 'script-inputs';
+    for (const def of s.inputs) {
+      const storeKey = runInputStorageKey(projectId, s.name, def.key);
+      const saved = localStorage.getItem(storeKey) || '';
+      const label = document.createElement('label');
+      const input = document.createElement('input');
+      input.dataset.envKey = def.key;
+      if (def.type === 'checkbox') {
+        label.className = 'script-input script-input-check';
+        input.type = 'checkbox';
+        input.dataset.checkedValue = def.checkedValue ?? 'true';
+        input.checked = saved === '1';
+        input.addEventListener('change', () =>
+          localStorage.setItem(storeKey, input.checked ? '1' : '')
+        );
+        label.append(input, document.createTextNode(def.label || def.key));
+      } else {
+        label.className = 'script-input';
+        const caption = document.createElement('span');
+        caption.textContent = `${def.label || def.key} · blank = .env`;
+        input.type = def.type || 'text';
+        input.placeholder = def.placeholder || '';
+        if (def.pattern) input.pattern = def.pattern;
+        if (def.hint) input.title = def.hint;
+        input.value = saved;
+        input.autocomplete = 'off';
+        input.spellcheck = false;
+        input.addEventListener('input', () => localStorage.setItem(storeKey, input.value.trim()));
+        label.append(caption, input);
+      }
+      wrap.appendChild(label);
+    }
+    return wrap;
+  }
+
+  /**
+   * Read a script row's run inputs. Shows the browser's validation bubble on
+   * the first bad field and returns null so the run is not started.
+   * @param {string} scriptName
+   * @returns {Record<string, string> | null}
+   */
+  function collectRunEnv(scriptName) {
+    const row = document.querySelector(`.script-row[data-script="${CSS.escape(scriptName)}"]`);
+    const env = {};
+    if (!row) return env;
+    for (const input of row.querySelectorAll('.script-inputs input[data-env-key]')) {
+      if (input.type === 'checkbox') {
+        if (input.checked) env[input.dataset.envKey] = input.dataset.checkedValue;
+        continue;
+      }
+      input.value = input.value.trim();
+      if (!input.checkValidity()) {
+        input.reportValidity();
+        return null;
+      }
+      if (input.value) env[input.dataset.envKey] = input.value;
+    }
+    return env;
+  }
+
+  /**
+   * Build a script row (checkbox + title + optional run inputs + Run).
+   * @param {string} projectId
+   * @param {{ name: string, title: string, selectable?: boolean, runnable?: boolean, inputs?: object[] }} s
    */
   function createScriptRow(projectId, s) {
     const row = document.createElement('div');
@@ -675,6 +751,8 @@
     )}</p><span class="script-status" hidden></span></div><p class="cmd">npm run ${escapeHtml(
       s.name
     )}</p>`;
+    const inputs = createRunInputs(projectId, s);
+    if (inputs) info.appendChild(inputs);
     left.appendChild(info);
     row.appendChild(left);
     const runBtn = document.createElement('button');
@@ -1144,6 +1222,8 @@
   }
 
   async function runScript(projectId, script) {
+    const env = collectRunEnv(script);
+    if (!env) return;
     if (!(await ensureAppiumForTests(script))) return;
     activeScriptName = script;
     setRunAck({
@@ -1164,7 +1244,7 @@
     try {
       const result = await api('/api/run', {
         method: 'POST',
-        body: JSON.stringify({ projectId, script }),
+        body: JSON.stringify({ projectId, script, env }),
       });
       if (!result.ok) {
         setRunAck({
@@ -1244,6 +1324,12 @@
       (el) => el.value
     );
     if (!scripts.length) return;
+    const envByScript = {};
+    for (const script of scripts) {
+      const env = collectRunEnv(script);
+      if (!env) return;
+      envByScript[script] = env;
+    }
     if (!(await ensureAppiumForTests('test'))) return;
     activeScriptName = scripts[0];
     setRunAck({
@@ -1256,10 +1342,11 @@
     try {
       const result = await api('/api/run/many', {
         method: 'POST',
-        body: JSON.stringify({ projectId: selectedProjectId, scripts }),
+        body: JSON.stringify({ projectId: selectedProjectId, scripts, envByScript }),
       });
       if (!result.ok) {
-        alert('Some scripts could not be queued');
+        const reasons = (result.results || []).filter((r) => !r.ok).map((r) => r.error);
+        alert(['Some scripts could not be queued', ...reasons].join('\n'));
       }
       cachedLogLines = [`[CLIENT] Queued ${scripts.length} script(s)`];
       lastLineCount = 0;
