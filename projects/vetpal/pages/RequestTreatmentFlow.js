@@ -19,10 +19,14 @@ class RequestTreatmentFlow {
   }
 
   /**
-   * Full Vet Practice happy path for one animal category.
-   * @param {string} categoryKey Horse|Cattle|…
+   * Step 1 of the Vet Practice flow, through Animal Category selection —
+   * stops before Animal Identification. Shared by the happy path below and
+   * by standalone Animal Identification tests (e.g. the Free Text
+   * character-limit test) that don't need to submit a full request.
+   * @param {string} categoryKey
+   * @returns {Promise<object>} the resolved category record
    */
-  async requestTreatmentWithVetPractice(categoryKey, opts = {}) {
+  async reachAnimalIdentificationForVetPractice(categoryKey, opts = {}) {
     const cat = categoryByKey(categoryKey);
     const practice = providerData.vetPractice;
     const store = providerData.remedyStore;
@@ -45,13 +49,24 @@ class RequestTreatmentFlow {
     await VetPracticeFormPage.assertAnimalCategoryScreen();
 
     await VetPracticeFormPage.selectAnimalCategory(cat.key);
-    await AnimalIdentificationPage.fillAnimalIdentification(cat.key);
+    return cat;
+  }
+
+  /**
+   * Full Vet Practice happy path for one animal category.
+   * @param {string} categoryKey Horse|Cattle|…
+   */
+  async requestTreatmentWithVetPractice(categoryKey, opts = {}) {
+    const store = providerData.remedyStore;
+    const cat = await this.reachAnimalIdentificationForVetPractice(categoryKey, opts);
+
+    const idResult = await AnimalIdentificationPage.fillAnimalIdentification(cat.key);
     await VetPracticeFormPage.fillTreatmentRequest(providerData.treatmentRequest);
     await VetPracticeFormPage.clickSubmitRequest();
 
     await RequestSummaryPage.verifyRequestSummary({
       category: cat.pickerContains,
-      vetPractice: practice,
+      vetPractice: providerData.vetPractice,
       remedyStore: store,
       treatment: providerData.treatmentRequest,
     });
@@ -60,20 +75,18 @@ class RequestTreatmentFlow {
 
     ui.log(
       'Result',
-      `Vet Practice | ${cat.key} | store=${store} | PASS`,
+      `Vet Practice | ${cat.key} | ${idResult.mode} | ${idResult.identification} | age=${idResult.age} | ageUnit=${idResult.ageUnit} | store=${store} | PASS`,
     );
   }
 
   /**
-   * Nearby Remedy Store. Does not change the Vet Practice happy path
-   * (`requestTreatmentWithVetPractice` / TC-VP-*).
-   *
-   * Pending Prescriptions → Request Vet Advice/Treatment → Nearby Remedy Store
-   * → inline store + branch → animal identification → Step 3 assessment.
-   *
+   * Step 1 of the Nearby Remedy Store flow, through Animal Category
+   * selection — stops before Animal Identification. See
+   * {@link reachAnimalIdentificationForVetPractice}.
    * @param {string} categoryKey
+   * @returns {Promise<object>} the resolved category record
    */
-  async requestTreatmentWithNearbyRemedyStore(categoryKey, opts = {}) {
+  async reachAnimalIdentificationForNearby(categoryKey, opts = {}) {
     const cat = categoryByKey(categoryKey);
     const store = providerData.remedyStore;
     const storeIndex = providerData.remedyStoreIndex;
@@ -91,7 +104,23 @@ class RequestTreatmentFlow {
     await NearbyRemedyStorePage.assertAnimalCategoryScreen();
 
     await NearbyRemedyStorePage.selectAnimalCategory(cat.key);
-    await AnimalIdentificationPage.fillAnimalIdentification(cat.key);
+    return cat;
+  }
+
+  /**
+   * Nearby Remedy Store. Does not change the Vet Practice happy path
+   * (`requestTreatmentWithVetPractice` / TC-VP-*).
+   *
+   * Pending Prescriptions → Request Vet Advice/Treatment → Nearby Remedy Store
+   * → inline store + branch → animal identification → Step 3 assessment.
+   *
+   * @param {string} categoryKey
+   */
+  async requestTreatmentWithNearbyRemedyStore(categoryKey, opts = {}) {
+    const store = providerData.remedyStore;
+    const cat = await this.reachAnimalIdentificationForNearby(categoryKey, opts);
+
+    const idResult = await AnimalIdentificationPage.fillAnimalIdentification(cat.key);
     await NearbyRemedyStorePage.clickNext();
     await NearbyRemedyStorePage.assertStep3();
 
@@ -101,7 +130,7 @@ class RequestTreatmentFlow {
 
     ui.log(
       'Result',
-      `Nearby Remedy Store | ${cat.key} | store=${store} | PASS`,
+      `Nearby Remedy Store | ${cat.key} | ${idResult.mode} | ${idResult.identification} | age=${idResult.age} | ageUnit=${idResult.ageUnit} | store=${store} | PASS`,
     );
   }
 }

@@ -21,6 +21,7 @@
     "test:ios:rt:vet:neg": "wdio run ./wdio.ios.conf.js --spec ./tests/requestTreatment/vetPractice.negative.test.js",
     "test:ios:rt:nearby": "wdio run ./wdio.ios.conf.js --spec ./tests/requestTreatment/nearbyRemedyStore.positive.test.js",
     "test:ios:rt:nearby:neg": "wdio run ./wdio.ios.conf.js --spec ./tests/requestTreatment/nearbyRemedyStore.negative.test.js",
+    "test:ios:rt:aid:charlimit": "wdio run ./wdio.ios.conf.js --spec ./tests/requestTreatment/animalIdentification.freeText.test.js",
     "test:ios:rt:horse": "node ./scripts/runRtCategory.js horse",
     "test:ios:rt:cattle": "node ./scripts/runRtCategory.js cattle",
     "test:ios:rt:sheep": "node ./scripts/runRtCategory.js sheep",

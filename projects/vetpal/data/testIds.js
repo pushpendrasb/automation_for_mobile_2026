@@ -93,6 +93,21 @@ const TEST_IDS = {
     /** Segment: Microchip/ID vs Group (`AnimalIdentificationExpandable.js`). */
     modeTags: 'animalId.mode.tags',
     modeGroup: 'animalId.mode.group',
+    /**
+     * New simplified Free Text Animal Identification UI
+     * (`SHOW_CURRENT_ANIMAL_IDENTIFICATION === false`). Confirmed AGAINST
+     * vetpal-animal-owner source, not guessed: the free-text TextInput, the
+     * Age TextInput, and the Age Unit TouchableOpacity in
+     * `src/Screens/Components/AnimalIdentificationSimple.js` render with NO
+     * testID today, so these three IDs do not exist in the app yet.
+     * `FreeTextAnimalIdentificationPage` locates all three by their exact
+     * placeholder/caption text instead (also confirmed against source).
+     * Age Unit itself opens the app's existing generic `CatPopup` (see
+     * `catPopup` below), so no separate testID is needed there at all.
+     */
+    freeText: 'animalId.freeText',
+    age: 'animalId.age',
+    ageUnitField: 'animalId.ageUnit.field',
   },
   summary: {
     submitNow: 'summary.submitNow',

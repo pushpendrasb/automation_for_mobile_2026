@@ -23,6 +23,26 @@ const TAG_SLOT_COUNT = 4;
 const MIN_GROUP_ANIMALS = 5;
 
 /**
+ * Verbatim copy of `AGE_UNIT_OPTIONS` in
+ * vetpal-animal-owner/src/Screens/CustomPopup/animalIdentificationUtils.js.
+ * Order is the CatPopup row index — Age Unit (old and new UI alike) is the
+ * app's shared CatPopup component, so `catPopup.row(AGE_UNIT_OPTIONS.indexOf(unit))`
+ * + `catPopup.save` selects a unit with no label-text matching needed.
+ */
+const AGE_UNIT_OPTIONS = [
+  'Years',
+  'Months',
+  'Days',
+  'Weeks',
+  'Eggs',
+  'Larvae',
+  'Juvenile',
+  'Parr/Fingerling',
+  'Smolts',
+  'Other',
+];
+
+/**
  * Ordered Request Treatment categories (prompt §4 / §12).
  * @type {Array<Record<string, unknown>>}
  */
@@ -298,12 +318,51 @@ function identificationFor(categoryKey, modeOverride) {
   };
 }
 
+/**
+ * Character limit for the new Free Text Animal Identification field.
+ * Horse: 128 (screenshot "0/128"). Everything else, including Poultry: 256
+ * (screenshot "0/256"). Source: New Request screenshots, not app source —
+ * this UI is not in the codebase excerpt the Identification Matrix above was
+ * built from.
+ * @param {string} categoryKey
+ * @returns {number}
+ */
+function freeTextCharLimit(categoryKey) {
+  const cat = categoryByKey(categoryKey);
+  return cat.layout === 'horse' ? 128 : 256;
+}
+
+/**
+ * Fill payload for the new Free Text Animal Identification UI
+ * (`SHOW_CURRENT_ANIMAL_IDENTIFICATION === false`). One text value for every
+ * category; Poultry additionally needs Age + Age Unit. Independent of
+ * {@link identificationFor}, which stays the Group/Microchip payload for the
+ * old UI.
+ * @param {string} categoryKey
+ * @param {{ text?: string, age?: string, ageUnit?: string }} [override]
+ */
+function freeTextIdentificationFor(categoryKey, override = {}) {
+  const cat = categoryByKey(categoryKey);
+  const text = override.text || `${cat.key}-Test-001`;
+  if (cat.layout !== 'poultry') {
+    return { text };
+  }
+  return {
+    text,
+    age: override.age || '12',
+    ageUnit: override.ageUnit || 'Years',
+  };
+}
+
 module.exports = {
   animalCategories,
   requestTreatmentData,
   categoryByKey,
   identificationFor,
   normalizeIdentificationMode,
+  freeTextIdentificationFor,
+  freeTextCharLimit,
+  AGE_UNIT_OPTIONS,
   TAG_SLOT_COUNT,
   MIN_GROUP_ANIMALS,
 };

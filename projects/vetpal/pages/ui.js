@@ -67,6 +67,27 @@ class Ui {
     );
   }
 
+  /**
+   * First field whose placeholder/value CONTAINS `text` — for long RN
+   * placeholders (e.g. the Free Text Animal Identification hint) where an
+   * exact match is brittle. Returns null instead of a lazy element.
+   * @param {string} text
+   * @returns {Promise<WebdriverIO.Element|null>}
+   */
+  async byPlaceholderContains(text) {
+    const label = this.escape(String(text).trim());
+    try {
+      const els = this.isAndroid()
+        ? await $$(`android=new UiSelector().textContains("${label}")`)
+        : await $$(
+            `-ios predicate string:placeholderValue CONTAINS[c] "${label}" OR value CONTAINS[c] "${label}"`,
+          );
+      return els && els.length ? els[0] : null;
+    } catch {
+      return null;
+    }
+  }
+
   async waitVisible(finder, timeout = 20000, timeoutMsg) {
     let last;
     await browser.waitUntil(

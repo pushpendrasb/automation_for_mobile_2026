@@ -10,9 +10,11 @@ const { ui } = require('./ui');
 const {
   categoryByKey,
   identificationFor,
+  freeTextIdentificationFor,
 } = require('../data/animalCategories');
 const { providerData } = require('../data/providerData');
 const { TEST_IDS } = require('../data/testIds');
+const FreeTextAnimalIdentificationPage = require('./FreeTextAnimalIdentificationPage');
 
 class AnimalIdentificationPage {
   /**
@@ -197,10 +199,14 @@ class AnimalIdentificationPage {
 
   /**
    * Switch to Group or Microchip/ID (CLI `--mode`) then fill that mode.
+   * Unchanged from before the Free Text UI existed — this is the OLD
+   * Animal Identification automation (`SHOW_CURRENT_ANIMAL_IDENTIFICATION
+   * === true`). Kept private; `fillAnimalIdentification` below decides
+   * whether to call this or the Free Text flow.
    * @param {string} categoryKey
    * @param {object} [override]
    */
-  async fillAnimalIdentification(categoryKey, override) {
+  async #fillExistingAnimalIdentification(categoryKey, override) {
     const cat = categoryByKey(categoryKey);
     const mode =
       (override && override.mode) ||
@@ -228,6 +234,145 @@ class AnimalIdentificationPage {
       );
     }
     await ui.dismissKeyboardUntilGone();
+    return data;
+  }
+
+  /**
+   * Readable identification string for the OLD UI's fill payload, for the
+   * result log (Category | Type | Mode | Identification | Age | Age Unit).
+   * @param {object} cat
+   * @param {object} data
+   */
+  #summarizeExisting(cat, data) {
+    if (data.mode === 'group') {
+      return {
+        mode: 'Existing Identification',
+        identification: `${data.groupName} (x${data.numberOfAnimals})`,
+        age: cat.layout === 'poultry' ? data.averageAge || '12' : 'N/A',
+        ageUnit: cat.layout === 'poultry' ? data.ageUnit || 'Days' : 'N/A',
+      };
+    }
+    return {
+      mode: 'Existing Identification',
+      identification: (data.tags || []).filter(Boolean).join(', '),
+      age: 'N/A',
+      ageUnit: 'N/A',
+    };
+  }
+
+  /**
+   * True when the OLD Tags/Group UI is in the tree: mode-toggle testIDs,
+   * the Group/Microchip field sets, or (older builds) their captions.
+   * @returns {Promise<boolean>}
+   */
+  async #isExistingUiVisible() {
+    if (
+      await ui.anyTestIdExists([
+        TEST_IDS.animalId.modeGroup,
+        TEST_IDS.animalId.modeTags,
+      ])
+    ) {
+      return true;
+    }
+    if ((await this.#isGroupReady()) || (await this.#isTagsReady())) {
+      return true;
+    }
+    return Boolean(
+      (await ui.firstCaption('Group')) || (await ui.firstCaption('Microchip/ID')),
+    );
+  }
+
+  /**
+   * Poll both UIs — fields mount async after category Save (see
+   * `fillByTestId`'s comment), so a single snapshot is too early for either.
+   * Old UI wins a simultaneous match since it is the established behaviour.
+   * @returns {Promise<'existing'|'freeText'|'none'>}
+   */
+  async #detectIdentificationUiMode() {
+    const timeout = 8000;
+    const interval = 200;
+    const start = Date.now();
+    do {
+      if (await this.#isExistingUiVisible()) {
+        return 'existing';
+      }
+      if (await FreeTextAnimalIdentificationPage.isVisible()) {
+        return 'freeText';
+      }
+      await browser.pause(interval);
+    } while (Date.now() - start < timeout);
+    return 'none';
+  }
+
+  /**
+   * Public so a standalone test (e.g. the Free Text character-limit test)
+   * can check which UI is live before deciding whether to run.
+   * @returns {Promise<'existing'|'freeText'|'none'>}
+   */
+  async detectIdentificationUiMode() {
+    return this.#detectIdentificationUiMode();
+  }
+
+  async #fillFreeTextAnimalIdentification(cat, data) {
+    ui.log(
+      'Animal Identification',
+      `Fill ${cat.key} via Free Text UI: "${data.text}"`,
+    );
+    await FreeTextAnimalIdentificationPage.enterIdentification(data.text);
+    if (cat.layout === 'poultry') {
+      await FreeTextAnimalIdentificationPage.enterAge(data.age || '12');
+      await FreeTextAnimalIdentificationPage.selectAgeUnit(data.ageUnit || 'Years');
+    }
+    return {
+      mode: 'Free Text',
+      identification: data.text,
+      age: cat.layout === 'poultry' ? data.age || '12' : 'N/A',
+      ageUnit: cat.layout === 'poultry' ? data.ageUnit || 'Years' : 'N/A',
+    };
+  }
+
+  /**
+   * Single entry point used by `RequestTreatmentFlow` for both Vet Practice
+   * and Nearby Remedy Store. Detects which Animal Identification UI the app
+   * is showing and dispatches — never reads `SHOW_CURRENT_ANIMAL_IDENTIFICATION`
+   * directly, since the app is not modified for this suite and the flag is
+   * not exposed to Appium.
+   *
+   * `existing UI visible` → old Tags/Group automation (unchanged).
+   * `Free Text UI visible` → new single-field automation (+ Age/Age Unit
+   * for Poultry only).
+   *
+   * @param {string} categoryKey
+   * @param {object} [override] Old-UI override, forwarded as-is (unchanged
+   * contract). Does not apply to the Free Text path — pass
+   * `{ freeText: { text, age, ageUnit } }` for that instead.
+   * @returns {Promise<{ mode: string, identification: string, age: string, ageUnit: string }>}
+   */
+  async fillAnimalIdentification(categoryKey, override) {
+    const cat = categoryByKey(categoryKey);
+    try {
+      const uiMode = await this.#detectIdentificationUiMode();
+
+      if (uiMode === 'existing') {
+        const data = await this.#fillExistingAnimalIdentification(cat.key, override);
+        return this.#summarizeExisting(cat, data);
+      }
+
+      if (uiMode === 'freeText') {
+        const data =
+          (override && override.freeText) || freeTextIdentificationFor(cat.key);
+        return this.#fillFreeTextAnimalIdentification(cat, data);
+      }
+
+      throw new Error(
+        'Neither the existing Tags/Group UI nor the Free Text UI was detected on the Animal Identification screen',
+      );
+    } catch (err) {
+      await ui.screenshot(`animal-identification-failed-${cat.key}`).catch(() => {});
+      const message = `Animal Identification failed.\nCategory: ${cat.pickerContains}\nType: ${cat.key}\n${err.message}`;
+      ui.log('Animal Identification', message.replace(/\n/g, ' | '));
+      throw new Error(message);
+    }
   }
 }
 
