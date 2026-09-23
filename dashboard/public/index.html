@@ -3,7 +3,8 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Automation Dashboard</title>
+    <title>App Design · Automation Control Desk</title>
+    <link rel="icon" href="/brand/appdesign-logo.svg" type="image/svg+xml" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -11,8 +12,68 @@
       rel="stylesheet"
     />
     <link rel="stylesheet" href="/styles.css" />
+    <link rel="stylesheet" href="/brand.css" />
   </head>
-  <body>
+  <!-- brand-appdesign: App Design client branding (brand.css / brand.js). ?brand=off disables it. -->
+  <body class="brand-appdesign">
+    <!-- Client showcase / welcome screen -->
+    <div class="showcase" id="showcase" role="dialog" aria-modal="true" aria-labelledby="showcaseTitle" hidden>
+      <div class="showcase-grid" aria-hidden="true"></div>
+      <div class="showcase-orbit showcase-orbit--1" aria-hidden="true"></div>
+      <div class="showcase-orbit showcase-orbit--2" aria-hidden="true"></div>
+      <button type="button" class="showcase-close" data-showcase-close aria-label="Close showcase">×</button>
+
+      <div class="showcase-card">
+        <img class="showcase-logo" src="/brand/appdesign-logo-light.svg" alt="App Design" />
+        <p class="showcase-kicker">Live · Mobile test automation</p>
+        <h2 class="showcase-title" id="showcaseTitle">
+          Apps with real purpose,<br /><em>tested on every release.</em>
+        </h2>
+        <p class="showcase-sub">
+          Automated end-to-end checks for App Design's iOS and Android apps — running on real
+          devices, from sign-in to registration, with a client-ready report after every run.
+        </p>
+
+        <div class="showcase-stats">
+          <div class="showcase-stat"><b data-stat="apps">0</b><span>Apps automated</span></div>
+          <div class="showcase-stat"><b data-stat="scripts">0</b><span>Test scripts</span></div>
+          <div class="showcase-stat"><b data-stat="runs">0</b><span>Recent runs</span></div>
+          <div class="showcase-stat"><b data-stat="reports">0</b><span>HTML reports</span></div>
+        </div>
+
+        <div class="showcase-pillars">
+          <div class="showcase-pillar">
+            <span class="showcase-pillar-num">01</span>
+            <h3>Design</h3>
+            <p>Every user journey written as a catalogued test case — positive and negative paths.</p>
+          </div>
+          <div class="showcase-pillar">
+            <span class="showcase-pillar-num">02</span>
+            <h3>Develop</h3>
+            <p>Appium drives the real app on iPhone and Android, exactly as a customer would.</p>
+          </div>
+          <div class="showcase-pillar">
+            <span class="showcase-pillar-num">03</span>
+            <h3>Deliver</h3>
+            <p>One click to run, live progress, and an HTML report with screenshots for sign-off.</p>
+          </div>
+        </div>
+
+        <div class="showcase-foot">
+          <div class="showcase-platforms" aria-label="Platforms">
+            <span>iOS</span><span>Android</span><span>Real devices</span><span>HTML reports</span>
+          </div>
+          <button type="button" class="showcase-enter" data-showcase-close>
+            Enter Control Desk <span aria-hidden="true">→</span>
+          </button>
+        </div>
+        <p class="showcase-credit">
+          App Design · Galway, Ireland ·
+          <a href="https://appdesign.ie/" target="_blank" rel="noopener">appdesign.ie</a>
+        </p>
+      </div>
+    </div>
+
     <div class="bg" aria-hidden="true">
       <div class="bg-orb bg-orb-a"></div>
       <div class="bg-orb bg-orb-b"></div>
@@ -21,11 +82,22 @@
 
     <header class="top">
       <div class="brand">
+        <div class="brand-logo-row">
+          <a href="https://appdesign.ie/" target="_blank" rel="noopener" aria-label="App Design website">
+            <img class="brand-logo brand-logo--dark" src="/brand/appdesign-logo.svg" alt="App Design" />
+            <img class="brand-logo brand-logo--light" src="/brand/appdesign-logo-light.svg" alt="App Design" />
+          </a>
+          <span class="brand-divider" aria-hidden="true"></span>
+          <p class="brand-partner">Quality Engineering<strong>Test Automation</strong></p>
+        </div>
         <p class="brand-mark">Mobile Automation</p>
         <h1>Control Desk</h1>
         <p class="tagline">Setup · Appium · devices · projects · reports · one click</p>
       </div>
       <div class="header-actions">
+        <button type="button" class="btn btn-ghost btn-showcase" id="btnShowcase" title="Open the App Design showcase screen">
+          Showcase
+        </button>
         <button type="button" class="btn btn-ghost" id="btnTheme" title="Toggle theme">
           Dark
         </button>
@@ -300,11 +372,25 @@
       </section>
     </main>
 
+    <div class="brand-foot">
+      <a href="https://appdesign.ie/" target="_blank" rel="noopener" aria-label="App Design website">
+        <img class="brand-logo--dark" src="/brand/appdesign-logo.svg" alt="App Design" />
+        <img class="brand-logo--light" src="/brand/appdesign-logo-light.svg" alt="App Design" />
+      </a>
+      <span>Award-winning app, software &amp; AI solutions · Galway, Ireland</span>
+      <span class="brand-foot-links">
+        <a href="https://appdesign.ie/" target="_blank" rel="noopener">appdesign.ie</a>
+        <a href="mailto:info@appdesign.ie">info@appdesign.ie</a>
+        <a href="tel:+35391393310">+353 91 393 310</a>
+      </span>
+    </div>
+
     <footer class="foot">
       <span>Local · bind via DASHBOARD_HOST if needed</span>
       <span id="footHint">Start Appium before test scripts</span>
     </footer>
 
     <script src="/app.js"></script>
+    <script src="/brand.js"></script>
   </body>
 </html>
