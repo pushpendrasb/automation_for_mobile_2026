@@ -1,5 +1,8 @@
 /**
- * Compose New Script → Veterinary Practice (Dispensing).
+ * Compose New Script → Veterinary Practice (Dispensing) or Animal Remedy Store
+ * (Prescribing). Both formats share the flow below; Remedy Store also needs
+ * Dispenser Details (dispenser + branch) and the client's mobile on tab 2, and
+ * its final button reads "Compose and Prescribe".
  * App: src/Screens/HomePage/ComposeNewScript.js and the screens it pushes
  * (PopUpWithSearchBar, CatPopup, DrugCompendium, AddMedicine, AddSignaturePopup).
  *
@@ -65,15 +68,16 @@ class ComposeScriptPage {
 
   /**
    * From Home (or My Prescriptions, where leave() ends up): open Compose New
-   * Script → Veterinary Practice.
+   * Script in the given format.
+   * @param {{ format?: 'vetPractice' | 'remedyStore' }} [opts]
    */
-  async openFromHome() {
+  async openFromHome({ format = 'vetPractice' } = {}) {
     ui.resetLayoutCache();
     if (!(await ui.isTestIdShown(TEST_IDS.myPrescriptions.compose))) {
       await ui.tapTestId(TEST_IDS.homeTile.myPrescriptions, 20000);
     }
     await ui.tapTestId(TEST_IDS.myPrescriptions.compose, 20000);
-    await ui.tapTestId(TEST_IDS.selectFormat.vetPractice);
+    await ui.tapTestId(TEST_IDS.selectFormat[format]);
     await ui.waitForTestId(C.tab(1), 20000);
   }
 
@@ -236,6 +240,122 @@ class ComposeScriptPage {
   /** Picked "Category - Type" ('' when none). */
   async getAnimal() {
     return this.#valueOf(C.animalCategoryValue);
+  }
+
+  /** Client's mobile number ('' when none). Read-only for an existing client. */
+  async getMobile() {
+    await ui.scrollToTestId(C.mobile, COMPOSE_AREA);
+    return this.#valueOf(C.mobile).then(v => v.replace(/\D/g, ''));
+  }
+
+  // ---------------------------------------------------------------- tab 2 — Remedy Store only
+
+  /** Placeholder of a TextInput testID ('' when not rendered). */
+  async #placeholderOf(id) {
+    const el = (await $$(ui.testIdSelector(id)))[0];
+    if (!el) {
+      return '';
+    }
+    return String(
+      (await el.getAttribute(ui.isAndroid() ? 'hint' : 'placeholderValue').catch(() => '')) || '',
+    ).trim();
+  }
+
+  /** Picked dispenser's name ('' when none). */
+  async getDispenser() {
+    return this.#valueOf(C.dispenserNameValue);
+  }
+
+  /** Picked branch's name ('' when none). */
+  async getBranch() {
+    return this.#valueOf(C.branchValue);
+  }
+
+  /**
+   * Dispenser name → Dispenser Name search list → pick the row containing
+   * `name` (the list filters case-insensitively), or the first row when blank.
+   * A row tap selects and closes the list.
+   * @param {string} [name]
+   * @returns {Promise<string>} picked dispenser's name
+   */
+  async selectDispenser(name = '') {
+    await this.#tapComposeField(C.dispenserNameValue);
+    const search = await ui.waitForTestId(TEST_IDS.searchPopup.search, 15000);
+    let selector = ui.testIdSelector(TEST_IDS.searchPopup.row(0));
+    if (name) {
+      await search.setValue(name);
+      selector = this.#rowSelector('searchPopup.row.', name);
+    }
+    await ui.waitFor(selector, 15000, name ? `dispenser "${name}" in the Dispenser Name list` : 'a dispenser in the list');
+    // Same KeyboardAwareScrollView as the client list: close the keyboard
+    // first, or the first row tap only dismisses it.
+    const header = await ui.rectOf(await ui.waitForTestId(TEST_IDS.searchPopup.close));
+    await ui.dismissKeyboard({ x: header.x + header.width + 120, y: header.y + header.height / 2 });
+    for (let attempt = 0; attempt < 3 && (await ui.isTestIdShown(TEST_IDS.searchPopup.close)); attempt++) {
+      const row = await ui.firstDisplayed(selector);
+      if (!row) {
+        break;
+      }
+      await row.click();
+      await browser.pause(800);
+    }
+    await ui.waitForTestId(C.clientNameValue, 15000);
+    let picked = '';
+    await browser.waitUntil(
+      async () => {
+        picked = await this.getDispenser();
+        return Boolean(picked) && (!name || picked.toLowerCase().includes(name.toLowerCase()));
+      },
+      { timeout: 8000, timeoutMsg: `Dispenser name did not show ${name ? `"${name}"` : 'a dispenser'} after picking it` },
+    );
+    console.log(`[compose] Dispenser: "${picked}"`);
+    return picked;
+  }
+
+  /**
+   * Branches load after the dispenser is picked (branch-list API).
+   * 1 branch → the app selects it itself; 2+ → open the Branch picker, tap the
+   * row containing `name` (or the first) and Save; 0 → the app says
+   * "Not found any branch." and the run cannot continue.
+   * @param {string} [name]
+   * @returns {Promise<string>} selected branch's name
+   */
+  async selectBranch(name = '') {
+    await ui.scrollToTestId(C.branchValue, COMPOSE_AREA);
+    let placeholder = '';
+    await browser.waitUntil(
+      async () => {
+        if (await this.getBranch()) {
+          return true;
+        }
+        placeholder = await this.#placeholderOf(C.branchValue);
+        return placeholder !== '' && !/loading/i.test(placeholder);
+      },
+      { timeout: 20000, interval: 500, timeoutMsg: 'Branches for the dispenser did not load' },
+    );
+
+    let branch = await this.getBranch();
+    if (branch) {
+      console.log(`[compose] Branch (only one, auto-selected): "${branch}"`);
+      return branch;
+    }
+    if (/no branches/i.test(placeholder)) {
+      throw new Error(`Dispenser "${await this.getDispenser()}" has no branches — pick another (COMPOSE_DISPENSER_NAME)`);
+    }
+
+    await this.#tapComposeField(C.branchValue);
+    await ui.waitForTestId(TEST_IDS.catPopup.row(0), 10000);
+    const row = name
+      ? await ui.waitFor(this.#rowSelector('catPopup.row.', name), 5000, `branch "${name}"`)
+      : await ui.byTestId(TEST_IDS.catPopup.row(0));
+    await row.click();
+    await ui.tapTestId(TEST_IDS.catPopup.save);
+    await browser.waitUntil(async () => Boolean((branch = await this.getBranch())), {
+      timeout: 8000,
+      timeoutMsg: 'Branch did not show a value after Save',
+    });
+    console.log(`[compose] Branch: "${branch}"`);
+    return branch;
   }
 
   // ---------------------------------------------------------------- tab 3

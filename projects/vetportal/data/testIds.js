@@ -108,6 +108,13 @@ const TEST_IDS = {
     addMedicine: 'compose.addMedicine',
     addMoreMedicine: 'compose.addMoreMedicine',
     medicine: index => `compose.medicine.${index}`,
+    /** Remedy Store only — Dispenser Details on tab 2. */
+    dispenserName: 'compose.dispenserName',
+    /** TextInput inside dispenserName — holds the picked dispenser's name. */
+    dispenserNameValue: 'compose.dispenserNameValue',
+    /** Branch: auto-picked when the dispenser has 1 branch, CatPopup when 2+. */
+    branch: 'compose.branch',
+    branchValue: 'compose.branchValue',
     /** Bottom button: "Next" on tabs 1–2, "Compose and Dispense" on tab 3. */
     submit: 'compose.submit',
   },

@@ -202,6 +202,62 @@ const ALL_TEST_CASES = [
     passWhen: 'Toast shown and no medicine listed',
     failWhen: 'No toast, or the signature popup opens',
   },
+
+  // ---------------------------------------------------------------- Compose Script — Animal Remedy Store
+  {
+    caseId: 'VPO-CR-P01',
+    module: 'Compose Script (Remedy Store)',
+    type: 'positive',
+    title: 'Existing client + animal + dispenser + medicine, signed and submitted, creates a prescription',
+    understanding:
+      'Same flow as Veterinary Practice (VPO-CS-P01); on step 2 the vet also picks the Remedy Store dispenser and its branch (creates a real prescription).',
+    steps: [
+      'Sign in → My Prescriptions → Compose New Script → Animal Remedy Store (Prescribing)',
+      'Vet Practice tab: practice is preselected → Next',
+      'Client Name → COMPOSE_REMEDY_CLIENT_NAME (a client with a mobile number on file)',
+      'Animal Category/ Type → COMPOSE_ANIMAL (default Horses - Horses)',
+      'Dispenser Details → Dispenser name → COMPOSE_DISPENSER_NAME (default first in list)',
+      'Branch → auto-selected when there is one, else COMPOSE_BRANCH_NAME (default first) → Save → Next',
+      'Add Medicine → pick a drug from the Drug Compendium → quantity + animal ID → Add',
+      'Compose and Prescribe → draw signature → tick confirmation → Complete Script Now',
+    ],
+    expected: '"Prescription created successfully" alert with an RX number',
+    passWhen: 'Success alert shown; OK returns to My Prescriptions',
+    failWhen: 'Client has no mobile, dispenser has no branches, a validation / API error toast, or no success alert within 40s',
+  },
+  {
+    caseId: 'VPO-CR-N01',
+    module: 'Compose Script (Remedy Store)',
+    type: 'negative',
+    title: 'Remedy Store: Next with no client picked shows "Enter/select client name"',
+    understanding: 'The Client/Dispenser step cannot continue without a client.',
+    steps: ['Open Compose New Script → Animal Remedy Store', 'Leave Client Name empty', 'Tap Next'],
+    expected: 'Toast "Enter/select client name"; stays on Client/Dispenser',
+    passWhen: 'Toast shown and Medicine tab not opened',
+    failWhen: 'No toast, or the Medicine tab opens',
+  },
+  {
+    caseId: 'VPO-CR-N02',
+    module: 'Compose Script (Remedy Store)',
+    type: 'negative',
+    title: 'Next without a dispenser shows "Please select a dispenser"',
+    understanding: 'Remedy Store scripts must name the dispenser that will supply the medicine.',
+    steps: ['Pick client + animal', 'Leave Dispenser name empty', 'Tap Next'],
+    expected: 'Toast "Please select a dispenser"; stays on Client/Dispenser',
+    passWhen: 'Toast shown and Medicine tab not opened',
+    failWhen: 'No toast, or the Medicine tab opens',
+  },
+  {
+    caseId: 'VPO-CR-N03',
+    module: 'Compose Script (Remedy Store)',
+    type: 'negative',
+    title: 'Compose and Prescribe with no medicine shows "Please add medicines or upload script"',
+    understanding: 'A script cannot be signed without at least one medicine.',
+    steps: ['Pick client + animal + dispenser + branch → Next', 'On Medicine tab tap Compose and Prescribe without adding a medicine'],
+    expected: 'Toast "Please add medicines or upload script"; no signature popup',
+    passWhen: 'Toast shown and no medicine listed',
+    failWhen: 'No toast, or the signature popup opens',
+  },
 ];
 
 /**

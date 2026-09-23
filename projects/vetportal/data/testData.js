@@ -109,6 +109,23 @@ const composeData = {
   herdNoToast: 'Please select or enter Herd No/Equine No/Flock No',
   noMedicineToast: 'Please add medicines or upload script',
   successMessage: 'Prescription created successfully',
+
+  // ---- Animal Remedy Store (Prescribing): same flow, plus Dispenser Details on tab 2.
+  /**
+   * Remedy Store needs the client's mobile number, which is read-only for an
+   * existing client — pick one that has a mobile on file. Defaults to clientName.
+   */
+  get remedyClientName() {
+    return process.env.COMPOSE_REMEDY_CLIENT_NAME || this.clientName;
+  },
+  /** Text in the Dispenser Name list; blank = first dispenser. */
+  dispenserName: process.env.COMPOSE_DISPENSER_NAME || '',
+  /** Text in the Branch list (only asked when the dispenser has 2+ branches); blank = first. */
+  branchName: process.env.COMPOSE_BRANCH_NAME || '',
+
+  mobileBlankToast: 'Please enter mobile number.',
+  dispenserBlankToast: 'Please select a dispenser',
+  branchBlankToast: 'Please select branch',
 };
 
 module.exports = {

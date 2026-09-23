@@ -19,6 +19,9 @@
     "test:ios:compose:practice": "wdio run ./wdio.ios.conf.js --spec ./tests/prescriptions/composeScript.vetPractice.negative.test.js --spec ./tests/prescriptions/composeScript.vetPractice.positive.test.js",
     "test:ios:compose:practice:positive": "wdio run ./wdio.ios.conf.js --spec ./tests/prescriptions/composeScript.vetPractice.positive.test.js",
     "test:ios:compose:practice:negative": "wdio run ./wdio.ios.conf.js --spec ./tests/prescriptions/composeScript.vetPractice.negative.test.js",
+    "test:ios:compose:remedy": "wdio run ./wdio.ios.conf.js --spec ./tests/prescriptions/composeScript.remedyStore.negative.test.js --spec ./tests/prescriptions/composeScript.remedyStore.positive.test.js",
+    "test:ios:compose:remedy:positive": "wdio run ./wdio.ios.conf.js --spec ./tests/prescriptions/composeScript.remedyStore.positive.test.js",
+    "test:ios:compose:remedy:negative": "wdio run ./wdio.ios.conf.js --spec ./tests/prescriptions/composeScript.remedyStore.negative.test.js",
     "test:android:signin": "wdio run ./wdio.android.conf.js --spec ./tests/auth/signIn.negative.test.js --spec ./tests/auth/signIn.positive.test.js",
     "test:android:signin:positive": "wdio run ./wdio.android.conf.js --spec ./tests/auth/signIn.positive.test.js",
     "test:android:signin:negative": "wdio run ./wdio.android.conf.js --spec ./tests/auth/signIn.negative.test.js",
@@ -28,6 +31,9 @@
     "test:android:compose:practice": "wdio run ./wdio.android.conf.js --spec ./tests/prescriptions/composeScript.vetPractice.negative.test.js --spec ./tests/prescriptions/composeScript.vetPractice.positive.test.js",
     "test:android:compose:practice:positive": "wdio run ./wdio.android.conf.js --spec ./tests/prescriptions/composeScript.vetPractice.positive.test.js",
     "test:android:compose:practice:negative": "wdio run ./wdio.android.conf.js --spec ./tests/prescriptions/composeScript.vetPractice.negative.test.js",
+    "test:android:compose:remedy": "wdio run ./wdio.android.conf.js --spec ./tests/prescriptions/composeScript.remedyStore.negative.test.js --spec ./tests/prescriptions/composeScript.remedyStore.positive.test.js",
+    "test:android:compose:remedy:positive": "wdio run ./wdio.android.conf.js --spec ./tests/prescriptions/composeScript.remedyStore.positive.test.js",
+    "test:android:compose:remedy:negative": "wdio run ./wdio.android.conf.js --spec ./tests/prescriptions/composeScript.remedyStore.negative.test.js",
     "check:devices": "AUTOMATION_PROJECT_ROOT=. node ../../framework/utils/checkDevices.js",
     "check:devices:ios": "AUTOMATION_PROJECT_ROOT=. node ../../framework/utils/checkDevices.js ios",
     "check:devices:android": "AUTOMATION_PROJECT_ROOT=. node ../../framework/utils/checkDevices.js android",
@@ -116,7 +122,60 @@
           "test:ios:compose:practice:negative",
           "test:android:compose:practice",
           "test:android:compose:practice:positive",
-          "test:android:compose:practice:negative"
+          "test:android:compose:practice:negative",
+          "test:ios:compose:remedy",
+          "test:ios:compose:remedy:positive",
+          "test:ios:compose:remedy:negative",
+          "test:android:compose:remedy",
+          "test:android:compose:remedy:positive",
+          "test:android:compose:remedy:negative"
+        ]
+      },
+      {
+        "key": "COMPOSE_REMEDY_CLIENT_NAME",
+        "label": "Remedy Store client name",
+        "type": "text",
+        "placeholder": "same as Client name",
+        "pattern": "[A-Za-z0-9 .'-]{2,60}",
+        "hint": "existing client with a mobile number on file (Remedy Store requires it)",
+        "scripts": [
+          "test:ios:compose:remedy",
+          "test:ios:compose:remedy:positive",
+          "test:ios:compose:remedy:negative",
+          "test:android:compose:remedy",
+          "test:android:compose:remedy:positive",
+          "test:android:compose:remedy:negative"
+        ]
+      },
+      {
+        "key": "COMPOSE_DISPENSER_NAME",
+        "label": "Dispenser name",
+        "type": "text",
+        "placeholder": "blank = first dispenser in the list",
+        "pattern": "[A-Za-z0-9 .&'()/-]{1,80}",
+        "scripts": [
+          "test:ios:compose:remedy",
+          "test:ios:compose:remedy:positive",
+          "test:ios:compose:remedy:negative",
+          "test:android:compose:remedy",
+          "test:android:compose:remedy:positive",
+          "test:android:compose:remedy:negative"
+        ]
+      },
+      {
+        "key": "COMPOSE_BRANCH_NAME",
+        "label": "Dispenser branch",
+        "type": "text",
+        "placeholder": "blank = first branch",
+        "pattern": "[A-Za-z0-9 .&'()/,-]{1,80}",
+        "hint": "only used when the dispenser has 2+ branches",
+        "scripts": [
+          "test:ios:compose:remedy",
+          "test:ios:compose:remedy:positive",
+          "test:ios:compose:remedy:negative",
+          "test:android:compose:remedy",
+          "test:android:compose:remedy:positive",
+          "test:android:compose:remedy:negative"
         ]
       },
       {
@@ -132,7 +191,13 @@
           "test:ios:compose:practice:negative",
           "test:android:compose:practice",
           "test:android:compose:practice:positive",
-          "test:android:compose:practice:negative"
+          "test:android:compose:practice:negative",
+          "test:ios:compose:remedy",
+          "test:ios:compose:remedy:positive",
+          "test:ios:compose:remedy:negative",
+          "test:android:compose:remedy",
+          "test:android:compose:remedy:positive",
+          "test:android:compose:remedy:negative"
         ]
       },
       {
@@ -145,7 +210,11 @@
           "test:ios:compose:practice",
           "test:ios:compose:practice:positive",
           "test:android:compose:practice",
-          "test:android:compose:practice:positive"
+          "test:android:compose:practice:positive",
+          "test:ios:compose:remedy",
+          "test:ios:compose:remedy:positive",
+          "test:android:compose:remedy",
+          "test:android:compose:remedy:positive"
         ]
       },
       {
@@ -159,7 +228,11 @@
           "test:ios:compose:practice",
           "test:ios:compose:practice:positive",
           "test:android:compose:practice",
-          "test:android:compose:practice:positive"
+          "test:android:compose:practice:positive",
+          "test:ios:compose:remedy",
+          "test:ios:compose:remedy:positive",
+          "test:android:compose:remedy",
+          "test:android:compose:remedy:positive"
         ]
       }
     ]
