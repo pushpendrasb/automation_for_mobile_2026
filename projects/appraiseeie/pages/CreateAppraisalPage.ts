@@ -314,7 +314,18 @@ export class CreateAppraisalPage {
    * the label/class-chain predicates are a fallback only.
    */
   async tapLookupIfPresent(lookupId: string, makeFieldId: string): Promise<void> {
-    const tapped = await this.tapLookupButton(lookupId);
+    let tapped = await this.tapLookupButton(lookupId);
+    if (!tapped) {
+      // The "previously been appraised" popup can already be covering the
+      // search button on this very first attempt (dismissing the keyboard
+      // on the registration field independently fires that duplicate-check
+      // API) — every isDisplayed() check above then sees a control blocked
+      // by the modal and reports it as not tappable, so tapLookupButton
+      // returns false having never actually tapped anything. Dismiss the
+      // popup and retry the tap once before giving up outright.
+      await this.dismissInfoAlertIfPresent();
+      tapped = await this.tapLookupButton(lookupId);
+    }
     if (!tapped) return;
     clientLog('Registration lookup tapped — waiting for auto-fill');
     const settled = await this.waitForLookupToSettle(makeFieldId);
