@@ -21,6 +21,7 @@ class SignUpPage {
   async openFromLogin() {
     await LoginPage.resetAppToLoginScreen();
     await ui.tapTestId(TEST_IDS.login.registerNow);
+    ui.resetLayoutCache();
     // Wait for the push animation to finish before the first tap.
     await ui.waitForStable(await ui.waitForTestId(IDS.profileImage, 15000));
   }
@@ -68,33 +69,53 @@ class SignUpPage {
 
   // ---------------------------------------------------------------- text fields
 
-  /** Scroll until the field is clear of the header, keyboard and Register Now bar. */
-  async #reveal(id) {
-    return ui.scrollToTestId(id, { topId: IDS.back, coverIds: [IDS.submit] });
+  /**
+   * Scroll until the field is clear of the header, keyboard and Register Now bar.
+   * @param {string} id
+   * @param {{ keepKeyboard?: boolean }} [opts] false = close the keyboard first
+   */
+  async #reveal(id, { keepKeyboard = true } = {}) {
+    return ui.scrollToTestId(id, { topId: IDS.back, coverIds: [IDS.submit], keepKeyboard });
   }
 
   /**
    * Type into a field, then read it back and retype on mismatch. setValue can
    * "succeed" while keystrokes land elsewhere (e.g. iOS Strong Password took focus).
+   * setValue already clears the field first; the read-back reuses the same
+   * element instead of scrolling to it again (the field has not moved).
+   * Retries close the keyboard first, in case it was covering the field.
+   *
+   * submit: press Return afterwards (iOS). Every signup field has
+   * returnKeyType "next" + onSubmitEditing → focus the next field, and the
+   * form then scrolls that field above the keyboard — so the next #type needs
+   * no keyboard close or scroll. Not for the mobile field: its phone pad has
+   * no Return key.
+   * @param {string} id
+   * @param {string} value
+   * @param {{ submit?: boolean }} [opts]
    */
-  async #type(id, value) {
+  async #type(id, value, { submit = false } = {}) {
     const expected = String(value || '');
     const name = id.replace('signup.', '');
     const isSecret = id === IDS.password;
     let actual = '';
     for (let attempt = 1; attempt <= 3; attempt++) {
-      const el = await this.#reveal(id);
-      await el.clearValue().catch(() => {});
+      const el = await this.#reveal(id, { keepKeyboard: attempt === 1 });
       if (expected) {
         await el.setValue(expected);
+      } else {
+        await el.clearValue().catch(() => {});
       }
       if (isSecret) {
         await this.#declineStrongPassword(el, expected);
       }
-      actual = await this.#fieldValue(await this.#reveal(id));
+      actual = await this.#fieldValue(el, isSecret ? '' : expected);
       const ok = isSecret ? actual.length === expected.length : actual === expected;
       if (ok) {
         console.log(`[Registration] ${name}: "${isSecret ? '*'.repeat(expected.length) : expected}"`);
+        if (submit && !ui.isAndroid()) {
+          await el.addValue('\n').catch(() => {});
+        }
         return;
       }
       console.log(
@@ -104,10 +125,19 @@ class SignUpPage {
     throw new Error(`Field "${name}" did not keep the typed value (shows "${isSecret ? `${actual.length} chars` : actual}")`);
   }
 
-  /** Current text of an input; '' when empty (iOS reports the placeholder as value). */
-  async #fieldValue(el) {
+  /**
+   * Current text of an input; '' when empty (iOS reports the placeholder as value).
+   * When the value already equals `expected` the placeholder lookup is skipped
+   * (saves one Appium call on the common, successful path).
+   * @param {WebdriverIO.Element} el
+   * @param {string} [expected]
+   */
+  async #fieldValue(el, expected = '') {
     const attr = ui.isAndroid() ? 'text' : 'value';
     const value = String((await el.getAttribute(attr).catch(() => '')) || '').trim();
+    if (!value || (expected && value === expected)) {
+      return value;
+    }
     const placeholder = String(
       (await el.getAttribute(ui.isAndroid() ? 'hint' : 'placeholderValue').catch(() => '')) || '',
     ).trim();
@@ -151,14 +181,18 @@ class SignUpPage {
     return raw === PLACEHOLDERS[id] ? '' : raw;
   }
 
+  /**
+   * Fill the personal-details fields top to bottom, pressing Return between
+   * them so the app itself moves focus + scrolls to the next field.
+   */
   async fillPersonalDetails(d) {
-    await this.#type(IDS.firstName, d.firstName);
-    await this.#type(IDS.middleName, d.middleName);
-    await this.#type(IDS.lastName, d.lastName);
-    await this.#type(IDS.email, d.email);
-    await this.#type(IDS.password, d.password);
+    await this.#type(IDS.firstName, d.firstName, { submit: true });
+    await this.#type(IDS.middleName, d.middleName, { submit: true });
+    await this.#type(IDS.lastName, d.lastName, { submit: true });
+    await this.#type(IDS.email, d.email, { submit: true });
+    await this.#type(IDS.password, d.password, { submit: true });
     await this.#type(IDS.mobile, d.mobile);
-    await this.#type(IDS.qualification, d.qualification);
+    await this.#type(IDS.qualification, d.qualification, { submit: true });
     await this.#type(IDS.vetRegNo, d.vetRegNo);
   }
 
@@ -169,8 +203,7 @@ class SignUpPage {
    * @returns {Promise<string>} the address shown on the form afterwards
    */
   async pickAddress(search, index) {
-    await this.#reveal(IDS.pickAddress);
-    await ui.tapTestId(IDS.pickAddress);
+    await (await this.#reveal(IDS.pickAddress)).click();
 
     const field = await ui.waitForTestId(TEST_IDS.placePicker.search, 15000);
     await field.setValue(search);
@@ -179,7 +212,13 @@ class SignUpPage {
     console.log(`[Registration] Address suggestion #${index + 1}: ${await row.getText().catch(() => '')}`);
     await row.click();
 
-    await ui.waitForTestId(IDS.firstName, 15000).catch(() => {});
+    // Back on the form once the picker's search box is gone. (Not firstName:
+    // the form stays scrolled to the address, so firstName is off-screen.)
+    await browser.waitUntil(async () => !(await ui.isTestIdShown(TEST_IDS.placePicker.search)), {
+      timeout: 15000,
+      interval: 300,
+      timeoutMsg: 'Place Picker did not close after tapping a suggestion',
+    });
     let address = '';
     await browser.waitUntil(
       async () => {
@@ -191,43 +230,53 @@ class SignUpPage {
     return address;
   }
 
-  /** Texts of the visible suggestion rows (placePicker.row.0 … row.N), in order. */
-  async #suggestionTexts(max = 6) {
+  /**
+   * All suggestion rows (placePicker.row.0 … row.N) in one query, in list
+   * order, with their texts. One lookup + one getText per row, instead of a
+   * displayed-check lookup per row index.
+   * @returns {Promise<{ rows: WebdriverIO.Element[], texts: string[] }>}
+   */
+  async #suggestionRows() {
+    const prefix = TEST_IDS.placePicker.row('');
+    const selector = ui.isAndroid()
+      ? `android=new UiSelector().resourceIdMatches("${prefix.replace(/\./g, '\\\\.')}[0-9]+")`
+      : `-ios predicate string:name BEGINSWITH "${prefix}"`;
+    const found = await $$(selector);
+    const rows = [];
     const texts = [];
-    for (let i = 0; i < max; i++) {
-      const row = await ui.byTestId(TEST_IDS.placePicker.row(i));
-      if (!row) {
-        break;
-      }
+    for (const row of found) {
+      rows.push(row);
       texts.push(String(await row.getText().catch(() => '')).trim());
     }
-    return texts;
+    return { rows, texts };
   }
 
   /**
    * The autocomplete fires a request per typed letter and results arrive out of
-   * order, so the list keeps changing for a moment. Only tap once two reads a
-   * second apart are identical.
+   * order, so the list keeps changing for a moment. Only tap once two reads in
+   * a row (~0.6s apart) are identical.
    */
   async #waitForSuggestion(search, index) {
     let previous = '';
-    let texts = [];
+    let current = { rows: [], texts: [] };
     await browser.waitUntil(
       async () => {
-        texts = await this.#suggestionTexts();
-        const snapshot = texts.join(' | ');
-        const stable = texts.length > index && snapshot === previous;
+        current = await this.#suggestionRows();
+        const snapshot = current.texts.join(' | ');
+        const stable = current.texts.length > index && snapshot === previous;
         previous = snapshot;
         return stable;
       },
       {
         timeout: 20000,
-        interval: 1000,
+        interval: 600,
         timeoutMsg: `Place Picker suggestions for "${search}" did not settle with at least ${index + 1} rows`,
       },
     );
-    console.log(`[Registration] Suggestions for "${search}": ${texts.map((t, i) => `${i + 1}) ${t}`).join('  ')}`);
-    return ui.byTestId(TEST_IDS.placePicker.row(index));
+    console.log(
+      `[Registration] Suggestions for "${search}": ${current.texts.map((t, i) => `${i + 1}) ${t}`).join('  ')}`,
+    );
+    return current.rows[index];
   }
 
   /** Keeps the eircode Google returned; types the fallback only if it is empty. */
