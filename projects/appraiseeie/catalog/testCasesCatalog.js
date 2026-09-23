@@ -170,6 +170,25 @@ const ALL_TEST_CASES = [
     passWhen: 'SAVE tapped without uncaught Appium error',
     failWhen: 'Stuck on validation, lookup, or photo picker',
   },
+  {
+    caseId: 'AP-CA-N01',
+    module: 'Create Appraisal',
+    type: 'negative',
+    title: 'same registration on Vehicle Required and Trade In fails at submission',
+    understanding:
+      'Vehicle Photos is page 4/4 of Create Appraisal. Using the same registration on Vehicle Required and Vehicle Trade In must make the app reject SAVE — this is a negative test, so the expected error is the pass condition, not a failure.',
+    steps: [
+      'Vehicle Required — fill customer + duplicate registration',
+      'Vehicle Trade In — same registration again',
+      'Vehicle Damage — tyre/alloy + photos',
+      'Vehicle Photos (page 4) — add photos, tap SAVE',
+      'Wait for the app to reject SAVE (error/alert or no navigation away)',
+    ],
+    expected:
+      "SAVE is rejected on Vehicle Photos (page 4) — app shows \"Registration Number of Vehicle Required and Vehicle Trade In can't be the same\"",
+    passWhen: 'SAVE rejected — error captured, test stops immediately without further interaction',
+    failWhen: 'SAVE unexpectedly succeeded with a duplicate registration',
+  },
 ];
 
 /**

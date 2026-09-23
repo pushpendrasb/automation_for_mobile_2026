@@ -7,7 +7,11 @@
   "exports": {
     ".": "./index.js",
     "./config/createWdioConfig": "./config/createWdioConfig.js",
-    "./utils/testReport": "./utils/testReport.js"
+    "./utils/testReport": "./utils/testReport.js",
+    "./utils/testContext": {
+      "types": "./utils/testContext.d.ts",
+      "default": "./utils/testContext.js"
+    }
   },
   "engines": {
     "node": ">=18"

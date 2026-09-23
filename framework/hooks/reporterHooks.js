@@ -12,6 +12,7 @@ const fs = require('fs');
 const { createTestReport } = require('../utils/testReport');
 const { buildPlatformMeta, fromSessionCaps } = require('../utils/deviceInfo');
 const { friendlyErrorMessage } = require('../utils/friendlyError');
+const { takeTestExtras } = require('../utils/testContext');
 
 /**
  * @param {'iOS'|'Android'} platformName
@@ -163,7 +164,7 @@ function buildReporterHooks(platformName, project) {
       testReport.recordTest(
         { title: name, parent: test.parent && test.parent.title },
         { passed, error, duration },
-        { ...meta, screenshot },
+        { ...meta, screenshot, ...takeTestExtras() },
       );
     },
 

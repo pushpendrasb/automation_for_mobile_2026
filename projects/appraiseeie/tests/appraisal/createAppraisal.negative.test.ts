@@ -13,10 +13,11 @@
  * FAIL when completePhotosStep returns normally (submission unexpectedly
  * went through with a duplicate registration).
  *
- * Note: the app has no dedicated "duplicate registration" error distinct
- * from any other SAVE failure (see verifySaveSucceeded's own comment) — a
- * PASS here means "SAVE was rejected", and the captured error message is
- * logged so the actual reason is visible rather than assumed.
+ * The app does show a dedicated validation message for this case
+ * ("Registration Number of Vehicle Required and Vehicle Trade In can't be
+ * the same") — verifySaveSucceeded looks for it (and other error phrasing)
+ * and surfaces the app's own text in the thrown error, which this test
+ * captures verbatim for the report instead of assuming a generic timeout.
  */
 import HomePage from '../../pages/HomePage';
 import CreateAppraisalPage from '../../pages/CreateAppraisalPage';
@@ -28,6 +29,12 @@ import {
   injectSamplePhotoToSimulator,
   injectVehiclePhotoFixturesToSimulator,
 } from '../../helpers/iosPhotos';
+import { setTestExtras } from '@mobile-automation/appium-core/utils/testContext';
+
+const EXPECTED_SAVE_ERROR =
+  "Registration Number of Vehicle Required and Vehicle Trade In can't be the same";
+const SAVE_ACTION = 'Tapped SAVE on Vehicle Photos step';
+const SAVE_PAGE = 'Vehicle Photos (page 4 of 4)';
 
 const DUPLICATE_REGISTRATION = '141KY51';
 
@@ -76,14 +83,30 @@ describe('AppraiseeIE — Create Appraisal (negative: duplicate registration)', 
       saveError = err instanceof Error ? err : new Error(String(err));
     }
 
+    // Error detected → capture it, mark PASS, and stop here. No further
+    // navigation/interaction happens below — the assertion just records the
+    // outcome for mocha/the report before the spec (and its Appium session)
+    // closes normally.
     if (!saveError) {
       await dumpPageSource('duplicate_registration_unexpectedly_succeeded');
       clientLog(
         `FAILURE: appraisal was created successfully with duplicate registration ` +
           `${DUPLICATE_REGISTRATION} on both Vehicle Required and Vehicle Trade In — expected rejection.`
       );
+      setTestExtras({
+        expectedError: EXPECTED_SAVE_ERROR,
+        actualError: 'None — SAVE unexpectedly succeeded',
+        pageContext: SAVE_PAGE,
+        action: SAVE_ACTION,
+      });
     } else {
       clientLog(`Confirmed: submission was rejected — ${saveError.message}`);
+      setTestExtras({
+        expectedError: EXPECTED_SAVE_ERROR,
+        actualError: saveError.message,
+        pageContext: SAVE_PAGE,
+        action: SAVE_ACTION,
+      });
     }
 
     expect(saveError).not.toBe(null);

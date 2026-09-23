@@ -245,6 +245,18 @@ export class CreateAppraisalPage {
     needles: string[],
     timeoutMs = 5000
   ): Promise<boolean> {
+    return (await this.findTextContaining(needles, timeoutMs)) !== null;
+  }
+
+  /**
+   * Like waitForTextContaining, but returns the matched label's actual text
+   * (verbatim, original case) instead of a boolean — so callers/the report
+   * can show the app's own wording rather than a generic message.
+   */
+  private async findTextContaining(
+    needles: string[],
+    timeoutMs = 5000
+  ): Promise<string | null> {
     const deadline = Date.now() + timeoutMs;
     const lower = needles.map((n) => n.toLowerCase());
     while (Date.now() < deadline) {
@@ -253,15 +265,15 @@ export class CreateAppraisalPage {
           '-ios class chain:**/XCUIElementTypeStaticText'
         );
         for (const label of labels) {
-          const t = ((await label.getText().catch(() => '')) || '').toLowerCase();
-          if (lower.some((n) => t.includes(n))) return true;
+          const text = (await label.getText().catch(() => '')) || '';
+          if (lower.some((n) => text.toLowerCase().includes(n))) return text;
         }
       } catch {
         /* retry */
       }
       await browser.pause(150);
     }
-    return false;
+    return null;
   }
 
   /**
@@ -722,6 +734,16 @@ export class CreateAppraisalPage {
    * that silently does nothing must fail the test and stop the script
    * immediately, not be reported as a pass.
    */
+  private static readonly SAVE_ERROR_NEEDLES = [
+    'error',
+    'failed',
+    'unable',
+    'try again',
+    'something went wrong',
+    "can't be the same",
+    'cannot be the same',
+  ];
+
   private async verifySaveSucceeded(
     saveSelectors: string[],
     timeoutMs = 15000
@@ -735,17 +757,31 @@ export class CreateAppraisalPage {
         clientLog('Appraisal submitted — left the Vehicle Photos step');
         return;
       }
+
+      // Check for the app's own validation/error text as we go, instead of
+      // only after the full timeout — an inline message (e.g. the duplicate
+      // registration check) can appear immediately while SAVE stays visible.
+      const earlyError = await this.findTextContaining(
+        CreateAppraisalPage.SAVE_ERROR_NEEDLES,
+        300
+      ).catch(() => null);
+      if (earlyError) {
+        clientLog(`SAVE rejected — app error: "${earlyError}"`);
+        await dumpPageSource('appraisal_save_failed');
+        throw new Error(`Create Appraisal SAVE failed — app error: "${earlyError}"`);
+      }
+
       await browser.pause(300);
     }
 
-    const errorShown = await this.waitForTextContaining(
-      ['error', 'failed', 'unable', 'try again', 'something went wrong'],
+    const errorText = await this.findTextContaining(
+      CreateAppraisalPage.SAVE_ERROR_NEEDLES,
       2000
-    ).catch(() => false);
+    ).catch(() => null);
     await dumpPageSource('appraisal_save_failed');
     throw new Error(
-      errorShown
-        ? 'Create Appraisal SAVE failed — the app showed an error instead of submitting.'
+      errorText
+        ? `Create Appraisal SAVE failed — app error: "${errorText}"`
         : `Create Appraisal SAVE tapped but the app did not leave the Vehicle Photos step within ${timeoutMs}ms — submission likely failed.`
     );
   }

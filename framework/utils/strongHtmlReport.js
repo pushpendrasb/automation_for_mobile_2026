@@ -257,16 +257,29 @@ function testCard(test, payload) {
         </div>`;
   }
 
+  // Negative tests (e.g. "expected the app to reject this") capture the
+  // error text they were looking for and the one the app actually showed,
+  // via utils/testContext — shown for both PASS (rejection confirmed) and
+  // FAIL (rejection never happened) when a spec sets them.
+  const negativeCapture =
+    test.expectedError || test.actualError
+      ? `<div class="cause${isFail ? '' : ' ok'}">
+          <span class="causelabel">${isFail ? 'Expected error was not seen' : 'Expected error — captured'}</span>
+          ${test.expectedError ? `Expected: ${escapeHtml(test.expectedError)}\n` : ''}${test.actualError ? `Actual: ${escapeHtml(test.actualError)}` : ''}
+        </div>`
+      : '';
+
   const cause = isFail
     ? `<div class="cause"><span class="causelabel">What went wrong (plain English)</span>${escapeHtml(test.error || 'Unknown error')}${
         test.errorTechnical &&
         String(test.errorTechnical) !== String(test.error)
           ? `<details style="margin-top:8px"><summary class="caption">Technical details</summary><pre style="white-space:pre-wrap;font-size:12px;margin:8px 0 0">${escapeHtml(String(test.errorTechnical))}</pre></details>`
           : ''
-      }</div>`
-    : test.understanding
-      ? `<p class="caption" style="margin-top:0">${escapeHtml(test.understanding)}</p>`
-      : '';
+      }</div>${negativeCapture}`
+    : negativeCapture ||
+      (test.understanding
+        ? `<p class="caption" style="margin-top:0">${escapeHtml(test.understanding)}</p>`
+        : '');
 
   const footBits = [
     plat.osVersion ? `iOS ${escapeHtml(plat.osVersion)}` : escapeHtml(plat.platformName || ''),
@@ -278,6 +291,8 @@ function testCard(test, payload) {
     test.failWhen && test.status === 'FAIL'
       ? `FAIL when: ${escapeHtml(test.failWhen)}`
       : '',
+    test.pageContext ? `Page: ${escapeHtml(test.pageContext)}` : '',
+    test.action ? `Action: ${escapeHtml(test.action)}` : '',
   ].filter(Boolean);
 
   return `
@@ -534,6 +549,8 @@ function reportCss() {
     display:block;color:#7FA8A2;font-family:'Manrope',sans-serif;
     font-size:12px;font-weight:700;margin-bottom:6px;
   }
+  .cause.ok{background:#0F2E28;color:#B9E9D4;}
+  .cause.ok .causelabel{color:#6FBE9E;}
   .foot{display:flex;gap:18px;margin-top:12px;font-size:13px;color:var(--ink-soft);flex-wrap:wrap}
   .foot a{color:var(--teal);text-decoration:none;font-weight:700}
   .shotframe{

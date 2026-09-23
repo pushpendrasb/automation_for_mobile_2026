@@ -108,7 +108,7 @@ function createTestReport(catalog, projectMeta) {
   /**
    * @param {{ title: string, parent?: string }} test
    * @param {{ passed: boolean, error?: Error, duration?: number }} outcome
-   * @param {{ caseId?: string, type?: string, screenshot?: string, module?: string, steps?: string[] }} extra
+   * @param {{ caseId?: string, type?: string, screenshot?: string, module?: string, steps?: string[], expectedError?: string, actualError?: string, pageContext?: string, action?: string }} extra
    */
   function recordTest(test, outcome, extra = {}) {
     const caseDef = findCaseByTitle(test.title) || {};
@@ -133,6 +133,13 @@ function createTestReport(catalog, projectMeta) {
         : rawErrorText(outcome.error) || null,
       screenshot: extra.screenshot || null,
       finishedAt: new Date().toISOString(),
+      // Optional per-test extras (see utils/testContext) — e.g. a negative
+      // test's expected vs. actual error text, the page/action it happened
+      // on. Left null for tests that don't set them.
+      expectedError: extra.expectedError || null,
+      actualError: extra.actualError || null,
+      pageContext: extra.pageContext || null,
+      action: extra.action || null,
     };
     results.push(row);
     if (reportsDir) {
