@@ -177,16 +177,37 @@ class FreeTextAnimalIdentificationPage {
     return Boolean(await ui.firstCaptionContains(AGE_UNIT_CAPTION));
   }
 
+  /**
+   * Poultry Age sits under the free-text field. After the keypad dismisses,
+   * one list scroll brings "Avg age" into view on short phones.
+   * @returns {Promise<WebdriverIO.Element|null>}
+   */
   async #findAgeField() {
-    const byId = await ui.firstByTestId(TEST_IDS.animalId.age);
-    if (byId) {
-      return byId;
+    const locate = async () => {
+      const byId = await ui.firstByTestId(TEST_IDS.animalId.age);
+      if (byId && (await ui.isShown(byId))) {
+        return byId;
+      }
+      const byPlaceholder = await ui.byPlaceholderContains(AGE_PLACEHOLDER_HINT);
+      if (byPlaceholder && (await ui.isShown(byPlaceholder))) {
+        return byPlaceholder;
+      }
+      return byId || byPlaceholder || null;
+    };
+
+    let field = await locate();
+    if (field && (await ui.isShown(field))) {
+      return field;
     }
-    const byPlaceholder = await ui.byPlaceholderContains(AGE_PLACEHOLDER_HINT);
-    if (byPlaceholder && (await ui.isShown(byPlaceholder))) {
-      return byPlaceholder;
+
+    await ui.scrollList('down');
+    field = await locate();
+    if (field) {
+      return field;
     }
-    return null;
+
+    await ui.scrollToText(AGE_PLACEHOLDER_HINT).catch(() => {});
+    return locate();
   }
 
   /**

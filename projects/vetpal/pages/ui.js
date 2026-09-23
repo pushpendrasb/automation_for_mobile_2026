@@ -313,6 +313,66 @@ class Ui {
   }
 
   /**
+   * Scroll a sheet / FlatList until `id` is displayed, then return it.
+   * Animal Category CatPopup shows Horse…Pig first; Poultry (row 7) sits
+   * below the fold and a tap on the off-screen row hits Pig instead.
+   * Uses the list container (`scrollList`), not a window swipe.
+   * @param {string} id
+   * @param {number} [maxSwipes=8]
+   * @returns {Promise<WebdriverIO.Element|null>}
+   */
+  async scrollListToTestId(id, maxSwipes = 8) {
+    const shown = async () => {
+      const el = await this.firstByTestId(id);
+      if (!el) {
+        return null;
+      }
+      return (await this.isShown(el)) ? el : null;
+    };
+
+    let el = await shown();
+    if (el) {
+      return el;
+    }
+
+    try {
+      this.log('UI', `scroll list to ${id}`);
+      await browser.execute('mobile: scroll', {
+        direction: 'down',
+        name: id,
+      });
+    } catch {
+      // popup list may not accept named scroll
+    }
+
+    el = await shown();
+    if (el) {
+      return el;
+    }
+
+    for (let i = 0; i < maxSwipes; i += 1) {
+      await this.scrollList('down');
+      el = await shown();
+      if (el) {
+        return el;
+      }
+    }
+
+    for (let i = 0; i < 3; i += 1) {
+      await this.scrollList('up');
+    }
+    for (let i = 0; i < maxSwipes; i += 1) {
+      el = await shown();
+      if (el) {
+        return el;
+      }
+      await this.scrollList('down');
+    }
+
+    return this.firstByTestId(id);
+  }
+
+  /**
    * Current value of a text field, or empty string.
    * @param {string} id
    * @returns {Promise<string>}
@@ -369,6 +429,240 @@ class Ui {
     if (!(await this.pickFromSheet(ids))) {
       throw new Error(
         `Sheet pick failed (${ids.openId || '-'} → ${ids.rowId} → ${ids.saveId}) — rebuild/reinstall the Vet Pal app`,
+      );
+    }
+  }
+
+  /**
+   * CatPopup labels are API-built (`Pigs - Piglets`, `Poultry - Layers`).
+   * Row indexes shift when the API adds subtypes, so Poultry cannot be
+   * `catPopup.row.7`. Match the category token on the left of " - ".
+   * @param {string} label full row text
+   * @param {string} token e.g. Poultry | Pig | Horse
+   * @returns {boolean}
+   */
+  catPopupLabelMatchesCategory(label, token) {
+    const raw = String(label || '').trim().toLowerCase();
+    const wanted = String(token || '').trim().toLowerCase().replace(/s$/, '');
+    if (!raw || !wanted) {
+      return false;
+    }
+    const categoryPart = raw.split(/\s*-\s*/)[0].trim().replace(/s$/, '');
+    return categoryPart === wanted;
+  }
+
+  /**
+   * Read label from a CatPopup row (TouchableOpacity + inner Text).
+   * @param {WebdriverIO.Element} el
+   * @returns {Promise<string>}
+   */
+  async #catPopupRowLabel(el) {
+    const fromEl =
+      (await el.getText().catch(() => '')) ||
+      (await el.getAttribute('label').catch(() => '')) ||
+      (await el.getAttribute('name').catch(() => '')) ||
+      '';
+    return String(fromEl).trim();
+  }
+
+  /**
+   * Find a currently mounted CatPopup row whose category matches `token`.
+   * FlatList unmounts off-screen rows, so this only sees the visible window.
+   * @param {string} token
+   * @returns {Promise<{ id: string, label: string }|null>}
+   */
+  async #findMountedCatPopupRow(token) {
+    for (let i = 0; i < 40; i += 1) {
+      const id = TEST_IDS.catPopup.row(i);
+      const el = await this.firstByTestId(id);
+      if (!el) {
+        continue;
+      }
+      const label = await this.#catPopupRowLabel(el);
+      if (this.catPopupLabelMatchesCategory(label, token)) {
+        return { id, label };
+      }
+    }
+    const byCaption =
+      (await this.firstCaptionContains(token)) ||
+      (await this.firstUsableContains(token));
+    if (byCaption) {
+      const label = await this.#catPopupRowLabel(byCaption);
+      const text = label || token;
+      if (this.catPopupLabelMatchesCategory(text, token)) {
+        return { id: null, label: text, el: byCaption };
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Open a CatPopup, scroll until a row for `labelContains` is mounted, tap it, Save.
+   * @param {{ openId?: string, labelContains: string, saveId: string }} opts
+   * @returns {Promise<boolean>}
+   */
+  async pickFromSheetByLabel({ openId, labelContains, saveId }) {
+    const sheetOpen = async () => Boolean(await this.firstByTestId(saveId));
+
+    if (!(await sheetOpen())) {
+      if (!openId || !(await this.tapTestId(openId))) {
+        return false;
+      }
+      if (!(await this.waitTrue(sheetOpen, 4000, 100))) {
+        return false;
+      }
+    }
+
+    const token = String(labelContains || '').trim();
+    const onScreenMatch = async () => {
+      const hit = await this.#findMountedCatPopupRow(token);
+      if (!hit) {
+        return null;
+      }
+      const el = hit.el || (hit.id ? await this.firstByTestId(hit.id) : null);
+      return el && (await this.#catPopupRowOnScreen(el)) ? { ...hit, el } : null;
+    };
+
+    let found = await onScreenMatch();
+    for (let i = 0; i < 12 && !found; i += 1) {
+      this.log('UI', `CatPopup scroll for "${token}" (${i + 1}/12)`);
+      await this.#dragCatPopupList('down');
+      found = await onScreenMatch();
+    }
+
+    if (!found) {
+      this.log('UI', `CatPopup has no visible row matching "${token}"`);
+      return false;
+    }
+
+    this.log('UI', `Tap CatPopup "${found.label}"`);
+    await found.el.click();
+
+    await browser.pause(40);
+    if (!(await this.tapTestId(saveId))) {
+      return false;
+    }
+    return this.waitTrue(
+      async () => !(await this.firstByTestId(saveId)),
+      4000,
+      100,
+    );
+  }
+
+  /**
+   * Visible band of the CatPopup FlatList: between the title and the Save bar.
+   * The popup sits over the New Request ScrollView, so `firstScrollable()` can
+   * return the form behind it — drag inside this band instead.
+   * @returns {Promise<{ top: number, bottom: number, x: number }|null>}
+   */
+  async #catPopupListBand() {
+    const title = await this.firstByTestId(TEST_IDS.catPopup.title);
+    const save = await this.firstByTestId(TEST_IDS.catPopup.save);
+    const t = title ? await this.rect(title) : null;
+    const s = save ? await this.rect(save) : null;
+    if (!t || !s) {
+      return null;
+    }
+    return {
+      top: t.y + t.h + 10,
+      bottom: s.y - 10,
+      x: Math.round(t.x + t.w / 2),
+    };
+  }
+
+  /**
+   * Drag the CatPopup list by roughly one screenful of rows.
+   * @param {'down'|'up'} direction down = reveal rows below
+   */
+  async #dragCatPopupList(direction) {
+    const band = await this.#catPopupListBand();
+    if (!band) {
+      await this.scrollList(direction);
+      return;
+    }
+    const span = band.bottom - band.top;
+    const low = Math.round(band.top + span * 0.85);
+    const high = Math.round(band.top + span * 0.15);
+    await browser.execute('mobile: dragFromToForDuration', {
+      duration: 0.5,
+      fromX: band.x,
+      fromY: direction === 'down' ? low : high,
+      toX: band.x,
+      toY: direction === 'down' ? high : low,
+    });
+    await browser.pause(250);
+  }
+
+  /**
+   * True when the row is mounted AND fully inside the popup list band, so a
+   * tap lands on it rather than on whatever row covers those coordinates.
+   * @param {WebdriverIO.Element} el
+   */
+  async #catPopupRowOnScreen(el) {
+    const band = await this.#catPopupListBand();
+    const r = await this.rect(el);
+    if (!band || !r) {
+      return false;
+    }
+    return r.y >= band.top && r.y + r.h <= band.bottom;
+  }
+
+  /**
+   * Open CatPopup, scroll inside it until `catPopup.row.<rowIndex>` is fully
+   * visible, check its label, tap it, then Save. Never taps an off-screen row.
+   * @param {{ openId?: string, rowIndex: number, saveId: string, expectToken?: string }} opts
+   * @returns {Promise<string>} the label that was selected
+   */
+  async pickVisibleCatPopupRow({ openId, rowIndex, saveId, expectToken }) {
+    const sheetOpen = async () => Boolean(await this.firstByTestId(saveId));
+    if (!(await sheetOpen())) {
+      if (!openId || !(await this.tapTestId(openId))) {
+        throw new Error(`Could not open CatPopup via ${openId}`);
+      }
+      if (!(await this.waitTrue(sheetOpen, 4000, 100))) {
+        throw new Error('CatPopup did not open');
+      }
+    }
+
+    const rowId = TEST_IDS.catPopup.row(rowIndex);
+    let el = null;
+    for (let i = 0; i < 15; i += 1) {
+      const candidate = await this.firstByTestId(rowId);
+      if (candidate && (await this.#catPopupRowOnScreen(candidate))) {
+        el = candidate;
+        break;
+      }
+      this.log('UI', `CatPopup scroll down to ${rowId} (${i + 1}/15)`);
+      await this.#dragCatPopupList('down');
+    }
+    if (!el) {
+      throw new Error(`${rowId} never became visible in the CatPopup list`);
+    }
+
+    const label = await this.#catPopupRowLabel(el);
+    if (expectToken && label && !this.catPopupLabelMatchesCategory(label, expectToken)) {
+      throw new Error(
+        `${rowId} is "${label}", not ${expectToken} — update pickerRowIndex in data/animalCategories.js`,
+      );
+    }
+
+    this.log('UI', `Tap ${rowId} "${label}"`);
+    await el.click();
+    await browser.pause(150);
+    if (!(await this.tapTestId(saveId))) {
+      throw new Error('CatPopup Save not found after selecting row');
+    }
+    await this.waitTrue(async () => !(await this.firstByTestId(saveId)), 4000, 100);
+    return label;
+  }
+
+  /**
+   * @param {{ openId?: string, labelContains: string, saveId: string }} opts
+   */
+  async requirePickFromSheetByLabel(opts) {
+    if (!(await this.pickFromSheetByLabel(opts))) {
+      throw new Error(
+        `Sheet pick failed — no CatPopup row matching "${opts.labelContains}" (API list may have extra subtypes like Pigs - Piglets). Scroll the list and match the category name, not a fixed row index.`,
       );
     }
   }

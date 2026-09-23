@@ -13,8 +13,10 @@
  * - Defaults (`defaultsToGroupIdentification`): Pig, Poultry, and Horse/equine
  *   open in Group; Cattle/Sheep/Goat/Deer open in Microchip/ID (tags)
  *
- * Picker labels are API-built (`Horses - Horses`, `Cattle - Dairy`, …).
- * Tests match the category token, not a hard-coded subtype.
+ * Picker labels are API-built (`Horses - Horses`, `Pigs - Piglets`,
+ * `Poultry - Layers`, …). Tests match the category token on the left of
+ * " - " (`pickerContains`). Do not rely on `pickerRowIndex` for Poultry —
+ * extra Pig/Cattle subtypes push it below the fold and steal that index.
  */
 
 const { providerData } = require('./providerData');
@@ -169,7 +171,13 @@ const animalCategories = [
   {
     key: 'Poultry',
     pickerContains: 'Poultry',
-    pickerRowIndex: 7,
+    /**
+     * 0-based `catPopup.row` index. Poultry subtypes are options 12–15 in the
+     * popup (rows 11–14, starting with "Poultry - Chicken - Broiler"); row 13
+     * is option 14. Below the fold, so the picker scrolls inside the popup first.
+     */
+    pickerRowIndex: 13,
+    scrollToRow: true,
     layout: 'poultry',
     defaultMode: 'group',
     identification: {

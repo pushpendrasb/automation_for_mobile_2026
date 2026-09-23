@@ -173,16 +173,29 @@ class VetPracticeFormPage {
   }
 
   /**
-   * CatPopup: tap the category row (Horse = first), then Save.
+   * CatPopup: tap the row whose label is this category, then Save.
+   * Labels are API-built (`Pigs - Piglets`, `Poultry - Layers`). Do not use
+   * a fixed `pickerRowIndex` — extra Pig/Cattle subtypes shift Poultry down.
    * @param {string} categoryKey
    */
   async selectAnimalCategory(categoryKey) {
     const cat = categoryByKey(categoryKey);
-    const row = Number(cat.pickerRowIndex || 0);
-    ui.log('Animal', `Category row ${row} (${cat.key})`);
-    await ui.requirePickFromSheet({
+
+    if (cat.scrollToRow) {
+      ui.log('Animal', `Category ${cat.key} → catPopup.row.${cat.pickerRowIndex}`);
+      await ui.pickVisibleCatPopupRow({
+        openId: TEST_IDS.requestTreatment.animalCategoryField,
+        rowIndex: Number(cat.pickerRowIndex),
+        saveId: TEST_IDS.catPopup.save,
+        expectToken: cat.pickerContains,
+      });
+      return;
+    }
+
+    ui.log('Animal', `Category "${cat.pickerContains}" (${cat.key})`);
+    await ui.requirePickFromSheetByLabel({
       openId: TEST_IDS.requestTreatment.animalCategoryField,
-      rowId: TEST_IDS.catPopup.row(row),
+      labelContains: cat.pickerContains,
       saveId: TEST_IDS.catPopup.save,
     });
   }
