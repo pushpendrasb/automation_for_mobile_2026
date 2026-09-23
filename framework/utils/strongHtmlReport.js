@@ -7,6 +7,7 @@
  * live WebdriverIO run — never from sample/demo numbers.
  */
 
+const fs = require('fs');
 const path = require('path');
 
 /**
@@ -132,12 +133,20 @@ function trendSvg(rates) {
 }
 
 /**
- * Relative screenshot href from reports/ to screenshots/.
+ * Screenshot embedded as a data URI so the report is self-contained — a
+ * relative href breaks when the HTML is previewed, served from reports/, or
+ * sent to someone on its own. Falls back to the relative href from reports/
+ * to screenshots/ if the file cannot be read.
  * @param {string|null} screenshot
  */
 function screenshotSrc(screenshot) {
   if (!screenshot) return null;
-  return `../screenshots/${path.basename(String(screenshot))}`;
+  try {
+    const data = fs.readFileSync(String(screenshot));
+    return `data:image/png;base64,${data.toString('base64')}`;
+  } catch {
+    return `../screenshots/${path.basename(String(screenshot))}`;
+  }
 }
 
 /**
