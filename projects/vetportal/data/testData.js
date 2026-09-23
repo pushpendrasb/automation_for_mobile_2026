@@ -82,9 +82,37 @@ const registrationData = {
   successTitle: 'You have successfully created your account',
 };
 
+/**
+ * Compose New Script → Veterinary Practice (Dispensing). Every value can be
+ * overridden from .env or the dashboard run inputs.
+ */
+const composeData = {
+  /** Existing client, picked from the Client Name search list. */
+  clientName: process.env.COMPOSE_CLIENT_NAME || 'Adelina Amara',
+  /**
+   * Text contained in the "Animal Category/ Type" row to pick. Companion pets
+   * appear as "Companion - <name>(<age>), Dog(<breed>)" — only if the vet's
+   * practice offers the Companion category. "Horses - Horses" needs no Herd No.
+   */
+  animal: process.env.COMPOSE_ANIMAL || 'Horses - Horses',
+  /** Row that needs a Herd No (Cattle/Sheep/Goats/Deer) — for the negative case. */
+  herdAnimal: process.env.COMPOSE_HERD_ANIMAL || 'Cattle - Dairy',
+  /** Drug Compendium search; blank = first drug in the list. */
+  medicineSearch: process.env.COMPOSE_MEDICINE_SEARCH || '',
+  quantity: process.env.COMPOSE_QUANTITY || '1',
+  animalId: process.env.COMPOSE_ANIMAL_ID || 'Automation test animal',
+
+  /** ComposeNewScript.js / Messages.js toasts */
+  clientBlankToast: 'Enter/select client name',
+  herdNoToast: 'Please select or enter Herd No/Equine No/Flock No',
+  noMedicineToast: 'Please add medicines or upload script',
+  successMessage: 'Prescription created successfully',
+};
+
 module.exports = {
   testData,
   registrationData,
+  composeData,
   uniqueEmail,
   registrationEmail,
   // Backwards-compatible names from the scaffold.

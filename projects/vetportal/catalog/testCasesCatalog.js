@@ -136,6 +136,72 @@ const ALL_TEST_CASES = [
     passWhen: 'Success alert shown',
     failWhen: 'A validation or API error toast is shown, or no response within 45s',
   },
+
+  // ---------------------------------------------------------------- Compose Script (Veterinary Practice)
+  {
+    caseId: 'VPO-CS-P01',
+    module: 'Compose Script',
+    type: 'positive',
+    title: 'Existing client + animal + medicine, signed and submitted, creates a prescription',
+    understanding:
+      'A vet composes a Veterinary Practice (Dispensing) script for an existing client and submits it (creates a real prescription).',
+    steps: [
+      'Sign in → My Prescriptions → Compose New Script → Veterinary Practice (Dispensing)',
+      'Vet Practice tab: practice is preselected → Next',
+      'Client Name → search and pick COMPOSE_CLIENT_NAME (default Adelina Amara)',
+      'Animal Category/ Type → COMPOSE_ANIMAL (default Horses - Horses) → Next',
+      'Add Medicine → pick a drug from the Drug Compendium → quantity + animal ID → Add',
+      'Compose and Dispense → draw signature → tick confirmation → Complete Script Now',
+    ],
+    expected: '"Prescription created successfully" alert with an RX number',
+    passWhen: 'Success alert shown; OK returns to My Prescriptions',
+    failWhen: 'A validation / API error toast is shown, or no success alert within 40s',
+  },
+  {
+    caseId: 'VPO-CS-N01',
+    module: 'Compose Script',
+    type: 'negative',
+    title: 'Next without a client shows "Enter/select client name"',
+    understanding: 'The Client/Dispenser step cannot continue without a client.',
+    steps: ['Open Compose New Script → Veterinary Practice', 'Leave Client Name empty', 'Tap Next'],
+    expected: 'Toast "Enter/select client name"; stays on Client/Dispenser',
+    passWhen: 'Toast shown and Medicine tab not opened',
+    failWhen: 'No toast, or the Medicine tab opens',
+  },
+  {
+    caseId: 'VPO-CS-N02',
+    module: 'Compose Script',
+    type: 'negative',
+    title: 'Address is filled from the existing client and cannot be edited',
+    understanding:
+      'The address comes from the picked client and is read-only, so the "Please enter address" toast cannot be reached in this flow.',
+    steps: ['Pick COMPOSE_CLIENT_NAME', 'Check the Address field', 'Try to type into Address'],
+    expected: 'Address shows the client address and typing does not change it',
+    passWhen: 'Address is non-empty and unchanged after typing',
+    failWhen: 'Address is empty or accepts typed text',
+  },
+  {
+    caseId: 'VPO-CS-N03',
+    module: 'Compose Script',
+    type: 'negative',
+    title: 'Herd animal without a Herd No shows the Herd No toast',
+    understanding: 'Cattle / Sheep / Goats / Deer need a Herd No / Equine No / Flock No.',
+    steps: ['Pick a client with no Herd No', 'Animal Category/ Type → COMPOSE_HERD_ANIMAL (default Cattle - Dairy)', 'Tap Next'],
+    expected: 'Toast "Please select or enter Herd No/Equine No/Flock No"',
+    passWhen: 'Toast shown and Medicine tab not opened',
+    failWhen: 'No toast, or the Medicine tab opens',
+  },
+  {
+    caseId: 'VPO-CS-N04',
+    module: 'Compose Script',
+    type: 'negative',
+    title: 'Compose and Dispense with no medicine shows "Please add medicines or upload script"',
+    understanding: 'A script cannot be signed without at least one medicine.',
+    steps: ['Pick client + animal → Next', 'On Medicine tab tap Compose and Dispense without adding a medicine'],
+    expected: 'Toast "Please add medicines or upload script"; no signature popup',
+    passWhen: 'Toast shown and no medicine listed',
+    failWhen: 'No toast, or the signature popup opens',
+  },
 ];
 
 /**

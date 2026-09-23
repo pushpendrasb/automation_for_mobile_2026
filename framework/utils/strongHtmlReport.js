@@ -5,10 +5,12 @@
  * (hero + gauge, module bars, expandable step trails, iPhone screenshot
  * frame, pass-rate trend, device matrix). Content is filled from the
  * live WebdriverIO run — never from sample/demo numbers.
+ * Client branding (App Design) comes from reportBrand.js; REPORT_BRAND=off disables it.
  */
 
 const fs = require('fs');
 const path = require('path');
+const { reportBrand, strongReportBrandCss, brandBarHtml, brandFootHtml } = require('./reportBrand');
 
 /**
  * Escape text for safe HTML interpolation.
@@ -617,6 +619,7 @@ function reportCss() {
  */
 function buildStrongHtml(payload, opts = {}) {
   const displayName = opts.displayName || payload.title || 'Mobile App';
+  const brand = reportBrand();
   const plat = payload.platform || {};
   const summary = payload.summary || {};
   const tests = payload.tests || [];
@@ -708,14 +711,16 @@ function buildStrongHtml(payload, opts = {}) {
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>${escapeHtml(displayName)} — Automation Report</title>
+<title>${brand ? `${escapeHtml(brand.name)} · ` : ''}${escapeHtml(displayName)} — Automation Report</title>
+${brand ? `<link rel="icon" href="${brand.logoDark}">` : ''}
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<style>${reportCss()}
+<style>${reportCss()}${brand ? strongReportBrandCss() : ''}
 </style>
 </head>
-<body>
+<body${brand ? ' class="brand-appdesign"' : ''}>
 <div class="wrap">
+${brand ? brandBarHtml(brand, escapeHtml) : ''}
 
   <div class="hero">
     <div>
@@ -729,8 +734,8 @@ function buildStrongHtml(payload, opts = {}) {
     </div>
     <div class="gauge">
       <svg width="190" height="120" viewBox="0 0 190 120">
-        <path d="M 20 105 A 78 78 0 0 1 170 105" fill="none" stroke="#24444B" stroke-width="14" stroke-linecap="round"/>
-        <path d="M 20 105 A 78 78 0 0 1 170 105" fill="none" stroke="#25B893" stroke-width="14"
+        <path class="track" d="M 20 105 A 78 78 0 0 1 170 105" fill="none" stroke="#24444B" stroke-width="14" stroke-linecap="round"/>
+        <path class="arc" d="M 20 105 A 78 78 0 0 1 170 105" fill="none" stroke="#25B893" stroke-width="14"
               stroke-linecap="round" stroke-dasharray="${gaugeDash(passRate)}" />
         <text x="95" y="88" text-anchor="middle" class="big">${passRate}%</text>
         <text x="95" y="106" text-anchor="middle" class="small">pass rate</text>
@@ -769,7 +774,7 @@ function buildStrongHtml(payload, opts = {}) {
   ${trendSection}
 
   ${matrixSection}
-
+${brand ? brandFootHtml(brand, escapeHtml) : ''}
   <footer>
     <span>${escapeHtml(driverLabel)} · WebdriverIO · ${escapeHtml(trigger)}</span>
     <span>${escapeHtml(displayName)} QA Automation</span>

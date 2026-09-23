@@ -10,6 +10,7 @@
 const fs = require('fs');
 const path = require('path');
 const { buildStrongHtml, escapeHtml } = require('./strongHtmlReport');
+const { reportBrand, catalogBrandCss, brandBarHtml, brandFootHtml } = require('./reportBrand');
 const { friendlyErrorMessage, rawErrorText } = require('./friendlyError');
 
 const HISTORY_LIMIT = 8;
@@ -205,17 +206,22 @@ function createTestReport(catalog, projectMeta) {
       })
       .join('\n');
 
+    const brand = reportBrand();
     const html = `<!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8"/>
-<title>${escapeHtml(displayName)} — Test Case Catalog</title>
+<title>${brand ? `${escapeHtml(brand.name)} · ` : ''}${escapeHtml(displayName)} — Test Case Catalog</title>
+${brand ? `<link rel="icon" href="${brand.logoDark}">` : ''}
 ${sharedStyles()}
+${brand ? catalogBrandCss() : ''}
 </head><body>
+  ${brand ? brandBarHtml(brand, escapeHtml) : ''}
   <h1>${escapeHtml(displayName)} — Test Case Catalog</h1>
   <p class="meta">
     Planned automated cases. Runtime results after a run:
     <a href="./${escapeHtml(reportBaseName)}.html">${escapeHtml(reportBaseName)}.html</a>
   </p>
   ${sections}
+  ${brand ? brandFootHtml(brand, escapeHtml) : ''}
 </body></html>`;
 
     fs.writeFileSync(path.join(dir, 'test-catalog.html'), html, 'utf8');

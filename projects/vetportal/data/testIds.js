@@ -10,6 +10,16 @@
  *   toast.*          src/Screens/Components/BannerView.js (error/success toast)
  *   signup.*         src/Screens/Signup.js (+ BottomSubmitButton testID prop)
  *   placePicker.*    src/Screens/Components/PlacePicker.js
+ *   home.tile.<n>    src/Screens/Home.js (TileItem)
+ *   myPrescriptions.* src/Screens/HomePage/MyPrescriptions.js
+ *   selectFormat.*   src/Screens/HomePage/MyPrescriptions/SelectFormatPopup.js
+ *   compose.*        src/Screens/HomePage/ComposeNewScript.js
+ *   searchPopup.*    src/Screens/CustomPopup/PopUpWithSearchBar.js
+ *   catPopup.*       src/Screens/HomePage/CatPopup.js
+ *   compendium.*     src/Screens/DrugCompendium.js
+ *   addMedicine.*    src/Screens/HomePage/AddMedicine.js
+ *   animalId.*       src/Screens/Components/AnimalIdentificationSimple.js
+ *   signature.*      src/Screens/HomePage/MyPrescriptions/AddSignaturePopup.js
  */
 const TEST_IDS = {
   login: {
@@ -63,6 +73,78 @@ const TEST_IDS = {
     banner: 'toast.banner',
     /** Message Text inside the banner (pre-existing ID in BannerView). */
     message: 'text2',
+  },
+  /** Home grid tiles — index matches Home.js TileItem (0 = My Prescriptions). */
+  homeTile: {
+    myPrescriptions: 'home.tile.0',
+  },
+  myPrescriptions: {
+    compose: 'myPrescriptions.compose',
+  },
+  selectFormat: {
+    vetPractice: 'selectFormat.vetPractice',
+    remedyStore: 'selectFormat.remedyStore',
+    close: 'selectFormat.close',
+  },
+  compose: {
+    screen: 'compose.screen',
+    back: 'compose.back',
+    tab: n => `compose.tab.${n}`,
+    practiceName: 'compose.practiceName',
+    clientName: 'compose.clientName',
+    /** TextInput inside clientName — holds the picked client's name. */
+    clientNameValue: 'compose.clientNameValue',
+    address: 'compose.address',
+    mobile: 'compose.mobile',
+    email: 'compose.email',
+    /** Free-text Herd No (client has no herds on file). */
+    herdNo: 'compose.herdNo',
+    /** Herd picker (client has herds on file). */
+    herdPicker: 'compose.herdPicker',
+    animalCategory: 'compose.animalCategory',
+    /** TextInput inside animalCategory — holds the picked "Category - Type". */
+    animalCategoryValue: 'compose.animalCategoryValue',
+    addCompanion: 'compose.addCompanion',
+    addMedicine: 'compose.addMedicine',
+    addMoreMedicine: 'compose.addMoreMedicine',
+    medicine: index => `compose.medicine.${index}`,
+    /** Bottom button: "Next" on tabs 1–2, "Compose and Dispense" on tab 3. */
+    submit: 'compose.submit',
+  },
+  /** PopUpWithSearchBar — client / dispenser search screen. */
+  searchPopup: {
+    search: 'searchPopup.search',
+    row: index => `searchPopup.row.${index}`,
+    close: 'searchPopup.close',
+    save: 'searchPopup.save',
+  },
+  /** CatPopup — bottom-sheet pickers (animal category/type, herd, practice). */
+  catPopup: {
+    row: index => `catPopup.row.${index}`,
+    backdrop: 'catPopup.backdrop',
+    save: 'catPopup.save',
+  },
+  compendium: {
+    search: 'compendium.search',
+    row: index => `compendium.row.${index}`,
+    back: 'compendium.back',
+  },
+  addMedicine: {
+    productName: 'addMedicine.productName',
+    quantity: 'addMedicine.quantity',
+    dosage: 'addMedicine.dosage',
+    submit: 'addMedicine.submit',
+  },
+  animalId: {
+    freeText: 'animalId.freeText',
+    age: 'animalId.age',
+  },
+  signature: {
+    pad: 'signature.pad',
+    confirm: 'signature.confirm',
+    complete: 'signature.complete',
+    reset: 'signature.reset',
+    close: 'signature.close',
   },
 };
 
