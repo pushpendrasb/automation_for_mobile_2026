@@ -30,6 +30,24 @@
   "dashboard": {
     "runInputs": [
       {
+        "key": "TEST_USER",
+        "label": "Sign-in email",
+        "type": "email",
+        "placeholder": "vet assistant account email",
+        "scripts": [
+          "test:ios:signin", "test:ios:signin:positive", "test:ios:signin:negative", "test:ios:signin:failure-demo",
+          "test:android:signin", "test:android:signin:positive", "test:android:signin:negative", "test:android:signin:failure-demo"
+        ]
+      },
+      {
+        "key": "TEST_PASSWORD",
+        "label": "Sign-in password",
+        "type": "password",
+        "secret": true,
+        "hint": "only the positive sign-in case uses it; negative cases use a wrong password on purpose",
+        "scripts": ["test:ios:signin", "test:ios:signin:positive", "test:android:signin", "test:android:signin:positive"]
+      },
+      {
         "key": "REG_EMAIL_BASE",
         "label": "Email",
         "type": "email",

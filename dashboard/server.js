@@ -421,10 +421,11 @@ function scriptTitle(name) {
 
 /**
  * Per-run inputs a project declares in package.json under `dashboard.runInputs`:
- *   { key, label, type: 'text'|'email'|'tel'|'checkbox', placeholder?, hint?,
- *     pattern?, checkedValue?, scripts: [scriptName, ...] }
+ *   { key, label, type: 'text'|'email'|'tel'|'password'|'checkbox', placeholder?,
+ *     hint?, pattern?, checkedValue?, secret?, scripts: [scriptName, ...] }
  * The dashboard shows them on the listed script rows and passes the values to
  * that run as environment variables (they win over the project's .env).
+ * secret: true → masked in the run log and never remembered by the browser.
  */
 function readRunInputs(projectId) {
   const pkgPath = path.join(PROJECTS_DIR, projectId, 'package.json');
@@ -897,7 +898,12 @@ function beginScriptRun(projectId, script, opts = {}) {
   const runId = `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
   const cwd = path.join(PROJECTS_DIR, projectId);
   const runEnv = opts.env || {};
-  const envLines = Object.entries(runEnv).map(([k, v]) => `env: ${k}=${v}`);
+  const secretKeys = new Set(
+    readRunInputs(projectId).filter((i) => i.secret).map((i) => i.key)
+  );
+  const envLines = Object.entries(runEnv).map(
+    ([k, v]) => `env: ${k}=${secretKeys.has(k) ? '••••••' : v}`
+  );
   activeRun = {
     id: runId,
     projectId,

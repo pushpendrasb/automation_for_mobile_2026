@@ -21,7 +21,7 @@ describe('VetPortal Sign In — Positive', () => {
   });
 
   it('VPO-SI-P02: Valid email + password navigate past Sign In', async () => {
-    console.log(`Using test user from .env: ${testData.email}`);
+    console.log(`Using test user (dashboard input or .env): ${testData.email}`);
 
     await LoginPage.enterEmail(testData.email);
     await LoginPage.enterPassword(testData.password);

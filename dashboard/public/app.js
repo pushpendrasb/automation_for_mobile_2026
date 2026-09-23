@@ -657,9 +657,11 @@
   /**
    * Render the script's declared run inputs (e.g. signup email / mobile).
    * Blank fields fall back to the project's .env when the script runs.
+   * Secret inputs (passwords) are not saved to localStorage.
    * @param {string} projectId
    * @param {{ name: string, inputs?: Array<{ key: string, label?: string, type?: string,
-   *   placeholder?: string, pattern?: string, hint?: string, checkedValue?: string }> }} s
+   *   placeholder?: string, pattern?: string, hint?: string, checkedValue?: string,
+   *   secret?: boolean }> }} s
    * @returns {HTMLElement | null}
    */
   function createRunInputs(projectId, s) {
@@ -668,7 +670,7 @@
     wrap.className = 'script-inputs';
     for (const def of s.inputs) {
       const storeKey = runInputStorageKey(projectId, s.name, def.key);
-      const saved = localStorage.getItem(storeKey) || '';
+      const saved = def.secret ? '' : localStorage.getItem(storeKey) || '';
       const label = document.createElement('label');
       const input = document.createElement('input');
       input.dataset.envKey = def.key;
@@ -690,9 +692,11 @@
         if (def.pattern) input.pattern = def.pattern;
         if (def.hint) input.title = def.hint;
         input.value = saved;
-        input.autocomplete = 'off';
+        input.autocomplete = def.secret ? 'new-password' : 'off';
         input.spellcheck = false;
-        input.addEventListener('input', () => localStorage.setItem(storeKey, input.value.trim()));
+        if (!def.secret) {
+          input.addEventListener('input', () => localStorage.setItem(storeKey, input.value.trim()));
+        }
         label.append(caption, input);
       }
       wrap.appendChild(label);
