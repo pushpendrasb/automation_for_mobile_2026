@@ -2,8 +2,9 @@
  * Compose New Script → Veterinary Practice (Dispensing) — positive (VPO-CS-P01).
  * Creates a real prescription on the environment the app points at.
  *
- * Inputs (dashboard or .env): TEST_USER / TEST_PASSWORD, COMPOSE_CLIENT_NAME,
- * COMPOSE_ANIMAL, COMPOSE_MEDICINE_SEARCH, COMPOSE_QUANTITY, COMPOSE_ANIMAL_ID.
+ * Sign-in: reuses the app's session; TEST_USER / TEST_PASSWORD (.env) only if signed out.
+ * Inputs (dashboard or .env): COMPOSE_CLIENT_NAME, COMPOSE_ANIMAL,
+ * COMPOSE_MEDICINE_SEARCH, COMPOSE_QUANTITY, COMPOSE_ANIMAL_ID.
  */
 const LoginPage = require('../../pages/LoginPage');
 const ComposeScriptPage = require('../../pages/ComposeScriptPage');
@@ -11,11 +12,8 @@ const { testData, composeData } = require('../../data/testData');
 
 describe('VetPortal Compose Script (Veterinary Practice) — Positive', () => {
   before(async () => {
-    await LoginPage.resetAppToLoginScreen();
-    await LoginPage.enterEmail(testData.email);
-    await LoginPage.enterPassword(testData.password);
-    await LoginPage.tapSignIn();
-    expect(await LoginPage.isLoginSuccessful(25000)).toBe(true);
+    // Reuse an existing session; sign in with .env credentials only if signed out.
+    await LoginPage.ensureLoggedIn(() => ({ email: testData.email, password: testData.password }));
   });
 
   after(async () => {

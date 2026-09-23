@@ -95,6 +95,8 @@ const composeData = {
    * practice offers the Companion category. "Horses - Horses" needs no Herd No.
    */
   animal: process.env.COMPOSE_ANIMAL || 'Horses - Horses',
+  /** Client with no Herd No on file for the Herd No negative case; blank = auto-find one. */
+  herdClientName: process.env.COMPOSE_HERD_CLIENT_NAME || '',
   /** Row that needs a Herd No (Cattle/Sheep/Goats/Deer) — for the negative case. */
   herdAnimal: process.env.COMPOSE_HERD_ANIMAL || 'Cattle - Dairy',
   /** Drug Compendium search; blank = first drug in the list. */

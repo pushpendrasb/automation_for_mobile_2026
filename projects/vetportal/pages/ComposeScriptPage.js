@@ -137,6 +137,35 @@ class ComposeScriptPage {
     });
   }
 
+  /**
+   * Walk the Client Name list (no search) and keep the first client that has
+   * no herds and no Herd/Equine No, so a herd animal must ask for one.
+   * @param {number} [maxClients]
+   * @returns {Promise<string>} picked client's name
+   */
+  async selectClientWithoutHerd(maxClients = 12) {
+    for (let i = 0; i < maxClients; i++) {
+      await this.#tapComposeField(C.clientNameValue);
+      const row = await ui.waitForTestId(TEST_IDS.searchPopup.row(i), 15000).catch(() => null);
+      if (!row) {
+        await ui.tapTestId(TEST_IDS.searchPopup.close).catch(() => {});
+        break;
+      }
+      await row.click();
+      await ui.waitForTestId(C.clientNameValue, 15000);
+      await browser.pause(800);
+      const hasPicker = (await $$(ui.testIdSelector(C.herdPicker))).length > 0;
+      const herdNo = hasPicker ? 'herds on file' : await this.getHerdNo();
+      const name = await this.getClientName();
+      if (!herdNo) {
+        console.log(`[compose] Client without Herd No: "${name}"`);
+        return name;
+      }
+      console.log(`[compose] Skipping "${name}" (Herd No: ${herdNo})`);
+    }
+    throw new Error(`No client without a Herd No in the first ${maxClients} clients`);
+  }
+
   /** Picked client's name ('' when none). */
   async getClientName() {
     return this.#valueOf(C.clientNameValue);
@@ -187,6 +216,21 @@ class ComposeScriptPage {
       timeout: 5000,
       timeoutMsg: 'Animal Category/ Type picker did not close',
     });
+  }
+
+  /**
+   * Selected Herd No / Equine No / Flock No ('' when none). Free-text field:
+   * "-" means none. Herd picker (client has herds): the app preselects only
+   * when there is exactly one herd, so an empty picker means none selected.
+   */
+  async getHerdNo() {
+    const picker = (await $$(ui.testIdSelector(C.herdPicker)))[0];
+    if (picker) {
+      const label = String((await picker.getAttribute('label').catch(() => '')) || '').trim();
+      return /^Select Herd No/i.test(label) ? '' : label;
+    }
+    const value = (await this.#valueOf(C.herdNo)).trim();
+    return value === '-' ? '' : value;
   }
 
   /** Picked "Category - Type" ('' when none). */

@@ -150,6 +150,59 @@ class LoginPage {
     throw new Error('VetPortal Sign In screen did not appear. Check IOS_BUNDLE_ID / app install.');
   }
 
+  /**
+   * Make sure the app is signed in and on Home, without logging out first.
+   * Already on Home → nothing to do. On Sign In → sign in with `credentials()`
+   * (called only then, so .env is read only when a login is really needed).
+   * Anywhere else (e.g. left on another screen by an earlier run) → relaunch.
+   * @param {() => { email: string, password: string }} credentials
+   */
+  async ensureLoggedIn(credentials) {
+    if (!(await this.isOnLoginScreen()) && !(await this.isHomeVisible())) {
+      await this.#relaunchApp();
+    }
+
+    const deadline = Date.now() + 45000;
+    while (Date.now() < deadline) {
+      if (await this.isHomeVisible()) {
+        console.log('[login] Already signed in — skipping login');
+        await this.#dismissHomePopup();
+        return;
+      }
+      if (await this.isOnLoginScreen()) {
+        const { email, password } = credentials();
+        console.log(`[login] Signed out — signing in as ${email} (.env)`);
+        await this.clearLoginFields();
+        await this.enterEmail(email);
+        await this.enterPassword(password);
+        await this.tapSignIn();
+        if (!(await this.isLoginSuccessful(25000))) {
+          const message = await this.getToastMessage();
+          throw new Error(`Sign in failed${message ? `: ${message}` : ''}. Check TEST_USER / TEST_PASSWORD in .env`);
+        }
+        await this.#dismissHomePopup();
+        return;
+      }
+      if (await this.isSubscribeVetsVisible()) {
+        throw new Error(
+          'Signed in on Subscribe Vets (account has not joined a practice) — Home is not reachable with this account.',
+        );
+      }
+      await browser.pause(500);
+    }
+    throw new Error('Neither Home nor Sign In appeared after launching the app.');
+  }
+
+  /** Home shows a ConfirmAlert shortly after mount; close it if it is up. */
+  async #dismissHomePopup() {
+    await browser.pause(700);
+    const popupCancel = await this.#firstDisplayed(this.#testIdSelector(TEST_IDS.alert.cancel));
+    if (popupCancel) {
+      await popupCancel.click();
+      await browser.pause(400);
+    }
+  }
+
   async #relaunchApp() {
     const appId = this.#isAndroid()
       ? process.env.ANDROID_APP_PACKAGE || project.defaults.android.appPackage

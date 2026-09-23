@@ -13,11 +13,8 @@ const { testData, composeData } = require('../../data/testData');
 
 describe('VetPortal Compose Script (Veterinary Practice) — Negative', () => {
   before(async () => {
-    await LoginPage.resetAppToLoginScreen();
-    await LoginPage.enterEmail(testData.email);
-    await LoginPage.enterPassword(testData.password);
-    await LoginPage.tapSignIn();
-    expect(await LoginPage.isLoginSuccessful(25000)).toBe(true);
+    // Reuse an existing session; sign in with .env credentials only if signed out.
+    await LoginPage.ensureLoggedIn(() => ({ email: testData.email, password: testData.password }));
   });
 
   beforeEach(async () => {
@@ -42,7 +39,12 @@ describe('VetPortal Compose Script (Veterinary Practice) — Negative', () => {
   });
 
   it('VPO-CS-N03: Herd animal without a Herd No shows the Herd No toast', async () => {
-    await ComposeScriptPage.selectClient(composeData.clientName);
+    // COMPOSE_HERD_CLIENT_NAME if set, otherwise the first client with no Herd No.
+    if (composeData.herdClientName) {
+      await ComposeScriptPage.selectClient(composeData.herdClientName);
+    } else {
+      await ComposeScriptPage.selectClientWithoutHerd();
+    }
     await ComposeScriptPage.selectAnimal(composeData.herdAnimal);
     await ComposeScriptPage.tapSubmit();
     await ComposeScriptPage.waitForToast(composeData.herdNoToast);
