@@ -598,8 +598,41 @@ function listScripts(projectId) {
     }))
     .sort((a, b) => {
       const order = ['iOS', 'Android', 'Devices', 'Reports', 'Default', 'Other'];
-      return order.indexOf(a.group) - order.indexOf(b.group) || a.name.localeCompare(b.name);
+      const ka = scriptSortKey(a.name);
+      const kb = scriptSortKey(b.name);
+      return (
+        order.indexOf(a.group) - order.indexOf(b.group) ||
+        ka.feature - kb.feature ||
+        ka.base.localeCompare(kb.base) ||
+        ka.rank - kb.rank
+      );
     });
+}
+
+/**
+ * Feature order inside each platform group (matched on the part after
+ * `test:<platform>:`); anything not listed comes last, A–Z.
+ */
+const FEATURE_ORDER = [/^signin\b/, /^signup\b/, /^compose:practice\b/, /^compose:remedy\b/];
+
+/**
+ * Sort key for the Scripts panel:
+ * - feature: sign in → sign up → compose practice → compose remedy → rest.
+ * - base + rank keep a suite's variants together, in the order `…:positive`,
+ *   `…:negative`, then the full suite (both specs), e.g.
+ *   compose · practice · positive → · negative → compose · practice.
+ * @param {string} name npm script name
+ * @returns {{ feature: number, base: string, rank: number }}
+ */
+function scriptSortKey(name) {
+  const rest = name.replace(/^test:(ios|android):?/, '');
+  const idx = FEATURE_ORDER.findIndex((re) => re.test(rest));
+  const feature = idx === -1 ? FEATURE_ORDER.length : idx;
+  const m = name.match(/^(.*):(positive|negative)$/);
+  if (m) {
+    return { feature, base: m[1], rank: m[2] === 'positive' ? 0 : 1 };
+  }
+  return { feature, base: name, rank: 2 };
 }
 
 /**

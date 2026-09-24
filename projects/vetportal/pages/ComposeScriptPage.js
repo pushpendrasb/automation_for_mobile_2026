@@ -335,7 +335,12 @@ class ComposeScriptPage {
       await row.click();
       await browser.pause(800);
     }
-    await ui.waitForTestId(C.clientNameValue, 15000);
+    // Client Name is usually scrolled off screen by now, so wait for the list to close instead.
+    await browser.waitUntil(async () => !(await ui.isTestIdShown(TEST_IDS.searchPopup.close)), {
+      timeout: 15000,
+      interval: 300,
+      timeoutMsg: 'Dispenser Name list did not close after picking a dispenser',
+    });
     let picked = '';
     await browser.waitUntil(
       async () => {
@@ -432,23 +437,30 @@ class ComposeScriptPage {
     }
     await ui.waitForTestId(TEST_IDS.compendium.row(0), 30000);
     await browser.pause(500);
-    // The list can re-render as results arrive (stale element): re-find and retry.
+    const M = TEST_IDS.addMedicine;
+    // The list can re-render as results arrive (stale element), and a tap that
+    // works can still report an error as the screen changes — so success is
+    // "Add Medicine is open", not "click() resolved".
     await browser.waitUntil(
       async () => {
+        if (await ui.isTestIdShown(M.productName)) {
+          return true;
+        }
         const drug = await ui.byTestId(TEST_IDS.compendium.row(0));
-        return Boolean(drug) && drug.click().then(() => true, () => false);
+        if (drug) {
+          await drug.click().catch(() => {});
+        }
+        return false;
       },
-      { timeout: 15000, interval: 500, timeoutMsg: 'Could not tap the first drug in the compendium' },
+      { timeout: 30000, interval: 1000, timeoutMsg: 'Could not open Add Medicine from the compendium' },
     );
-
-    const M = TEST_IDS.addMedicine;
     await ui.waitForTestId(M.productName, 20000);
-    // Drug details (withdrawal, route, dosage…) are filled in async after the pick.
-    await browser.pause(1000);
     ui.resetLayoutCache();
     await this.#fillEmptyMedicineFields({ quantity, ...fallbacks });
     await this.#typeInto(TEST_IDS.animalId.freeText, animalId, { coverIds: [M.submit] });
     await ui.dismissKeyboard({ x: 10, y: 120 });
+    // Practice details can still land late and blank a field — check once more.
+    await this.#fillEmptyMedicineFields({ quantity, ...fallbacks }, { settle: false });
     await ui.tapTestId(M.submit);
 
     await ui.waitForTestId(C.medicine(index), 20000);
@@ -463,23 +475,21 @@ class ComposeScriptPage {
    * is empty); Unit and Route use the first list entry.
    * @param {{ quantity: string, withdrawalPeriod?: string, withdrawalNotes?: string,
    *   dosage?: string, recommendation?: string }} values
+   * @param {{ settle?: boolean }} [opts] settle: first wait for the drug's
+   *   details to stop changing (see #readSettledMedicineFields)
    */
-  async #fillEmptyMedicineFields(values) {
+  async #fillEmptyMedicineFields(values, { settle = true } = {}) {
     const M = TEST_IDS.addMedicine;
     const d = { ...composeDefaults(), ...values };
 
-    // Read everything once (iOS reports values of off-screen fields too).
-    const unitLabel = (await this.#rawLabel(M.unit)).trim();
-    const current = {
-      'Withdrawal Period': await this.#valueOf(M.withdrawalPeriod),
-      'Withdrawal Notes': await this.#valueOf(M.withdrawalNotes),
-      Qty: await this.#valueOf(M.quantity),
-      Unit: unitLabel === 'Select' ? '' : unitLabel,
-      Route: await this.#valueOf(M.route),
-      Dosage: await this.#valueOf(M.dosage),
-      Recommendation: await this.#valueOf(M.recommendation),
-    };
-    console.log(`[compose] Add Medicine as opened: ${JSON.stringify(current)}`);
+    const current = settle ? await this.#readSettledMedicineFields() : await this.#readMedicineFields();
+    const empty = Object.keys(current).filter((f) => !current[f].trim());
+    if (!settle && !empty.length) {
+      return;
+    }
+    console.log(
+      `[compose] Add Medicine ${settle ? 'as opened' : 'before Add'}: ${JSON.stringify(current)}`,
+    );
 
     /** How to fill each field, in on-screen order. */
     const fillers = {
@@ -495,7 +505,7 @@ class ComposeScriptPage {
     };
     const filled = [];
     for (const [field, fill] of Object.entries(fillers)) {
-      if (!current[field].trim()) {
+      if (empty.includes(field)) {
         await fill();
         filled.push(field);
       }
@@ -503,6 +513,47 @@ class ComposeScriptPage {
     console.log(
       `[compose] Add Medicine: ${filled.length ? `filled empty ${filled.join(', ')}` : 'all fields prefilled by the drug'}`,
     );
+  }
+
+  /**
+   * Current Add Medicine field values keyed by on-screen label
+   * (iOS reports values of off-screen fields too, so no scrolling).
+   * @returns {Promise<Record<string, string>>}
+   */
+  async #readMedicineFields() {
+    const M = TEST_IDS.addMedicine;
+    const unitLabel = (await this.#rawLabel(M.unit)).trim();
+    return {
+      'Withdrawal Period': await this.#valueOf(M.withdrawalPeriod),
+      'Withdrawal Notes': await this.#valueOf(M.withdrawalNotes),
+      Qty: await this.#valueOf(M.quantity),
+      Unit: unitLabel === 'Select' ? '' : unitLabel,
+      Route: await this.#valueOf(M.route),
+      Dosage: await this.#valueOf(M.dosage),
+      Recommendation: await this.#valueOf(M.recommendation),
+    };
+  }
+
+  /**
+   * After a drug is picked the app fills its compendium details, then may
+   * replace them with the practice's saved details for this animal (a later
+   * API call that can change route/unit and blank dosage). Read until two
+   * reads in a row match, so we fill against the final state (max ~12s).
+   * @returns {Promise<Record<string, string>>}
+   */
+  async #readSettledMedicineFields() {
+    const deadline = Date.now() + 12000;
+    let prev = null;
+    let current = await this.#readMedicineFields();
+    while (Date.now() < deadline) {
+      await browser.pause(1500);
+      prev = current;
+      current = await this.#readMedicineFields();
+      if (JSON.stringify(prev) === JSON.stringify(current)) {
+        break;
+      }
+    }
+    return current;
   }
 
   /** Label of a testID even when it is scrolled off screen ('' if missing). */
