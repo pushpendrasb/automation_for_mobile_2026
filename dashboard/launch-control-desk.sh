@@ -7,6 +7,9 @@ set +e
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 PORT="${DASHBOARD_PORT:-3939}"
 URL="http://127.0.0.1:${PORT}"
+# Address shown in the browser. /etc/hosts maps it to 127.0.0.1 on this Mac;
+# setup-local-domain.sh also forwards port 80 so no ":3939" is needed.
+DOMAIN="${DASHBOARD_DOMAIN:-testsuite.appdesign.ie}"
 LOG="/tmp/automation-control-desk.log"
 PID_FILE="/tmp/automation-control-desk.pid"
 
@@ -84,5 +87,18 @@ if ! has_setup_api; then
   exit 1
 fi
 
-/usr/bin/open "$URL"
+# Browser URL: the App Design name when it reaches this dashboard (without the
+# port if port 80 is forwarded), else fall back to 127.0.0.1.
+OPEN_URL="$URL"
+if [[ -n "$DOMAIN" ]]; then
+  if /usr/bin/curl -sf -o /dev/null --max-time 1 "http://${DOMAIN}/api/setup" 2>/dev/null; then
+    OPEN_URL="http://${DOMAIN}"
+  elif /usr/bin/curl -sf -o /dev/null --max-time 1 "http://${DOMAIN}:${PORT}/api/setup" 2>/dev/null; then
+    OPEN_URL="http://${DOMAIN}:${PORT}"
+  else
+    echo "${DOMAIN} does not reach this dashboard — opening ${URL}. Run: sudo bash dashboard/setup-local-domain.sh" >>"$LOG"
+  fi
+fi
+
+/usr/bin/open "$OPEN_URL"
 exit 0

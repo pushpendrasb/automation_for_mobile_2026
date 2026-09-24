@@ -448,8 +448,15 @@ a.btn {
   place-items: center;
   font-size: 0.75rem;
   font-weight: 800;
+  line-height: 1;
   flex-shrink: 0;
   margin-top: 0.1rem;
+}
+
+.setup-check-mark svg {
+  width: 0.8rem;
+  height: 0.8rem;
+  display: block;
 }
 
 .setup-check[data-ok='true'] .setup-check-mark {
@@ -477,7 +484,8 @@ body.theme-dark .setup-check[data-ok='false'] .setup-check-mark {
   font-size: 0.88rem;
 }
 
-.setup-check span {
+/* Detail line only — must not match .setup-check-mark (also a span). */
+.setup-check > div > span {
   display: block;
   margin-top: 0.15rem;
   font-size: 0.78rem;

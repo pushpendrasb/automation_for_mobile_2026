@@ -9,7 +9,7 @@ All of these still work — use whichever you prefer:
 | **Terminal (kept)** | `npm run dashboard` |
 | **Short aliases** | `npm start` or `npm run desk` |
 | **Click app (optional)** | Double-click **`Control Desk.app`** — starts server if needed + opens browser |
-| **URL / bookmark** | **http://127.0.0.1:3939** (server must already be running) |
+| **URL / bookmark** | **http://testsuite.appdesign.ie:3939** — needs `127.0.0.1 testsuite.appdesign.ie` in `/etc/hosts` on this Mac (else **http://127.0.0.1:3939**). Set `DASHBOARD_DOMAIN=` (empty) to always use 127.0.0.1. |
 
 `npm run dashboard` is unchanged and fully supported.
 

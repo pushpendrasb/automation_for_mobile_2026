@@ -20,6 +20,8 @@ const DATA_DIR = path.join(__dirname, 'data');
 const HISTORY_FILE = path.join(DATA_DIR, 'run-history.json');
 const PORT = Number(process.env.DASHBOARD_PORT || 3939);
 const HOST = process.env.DASHBOARD_HOST || '127.0.0.1';
+/** Name shown in the browser; /etc/hosts maps it to 127.0.0.1 (see setup-local-domain.sh). */
+const DOMAIN = process.env.DASHBOARD_DOMAIN ?? 'testsuite.appdesign.ie';
 const APPIUM_URL = process.env.APPIUM_URL || 'http://127.0.0.1:4723';
 
 /** @type {import('child_process').ChildProcess | null} */
@@ -1450,11 +1452,46 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
-server.listen(PORT, HOST, () => {
-  const url = `http://${HOST}:${PORT}`;
+/** True if `url` reaches this dashboard (not some other server with that name). */
+function reachesDashboard(url) {
+  return new Promise((resolve) => {
+    const req = http.get(`${url}/api/health`, { timeout: 1000 }, (res) => {
+      let body = '';
+      res.on('data', (c) => (body += c));
+      res.on('end', () => {
+        try {
+          resolve(res.statusCode === 200 && JSON.parse(body).root === ROOT);
+        } catch {
+          resolve(false);
+        }
+      });
+    });
+    req.on('timeout', () => req.destroy());
+    req.on('error', () => resolve(false));
+  });
+}
+
+/**
+ * Browser URL: http://DOMAIN when port 80 is forwarded here, else
+ * http://DOMAIN:PORT when the name maps to this Mac, else HOST:PORT.
+ */
+async function publicUrl() {
+  const local = `http://${HOST}:${PORT}`;
+  if (!DOMAIN) return local;
+  for (const candidate of [`http://${DOMAIN}`, `http://${DOMAIN}:${PORT}`]) {
+    if (await reachesDashboard(candidate)) return candidate;
+  }
+  return local;
+}
+
+server.listen(PORT, HOST, async () => {
+  const url = await publicUrl();
   console.log('');
   console.log('  Automation Dashboard');
   console.log(`  ${url}`);
+  if (DOMAIN && !url.includes(DOMAIN)) {
+    console.log(`  (${DOMAIN} is not set up on this Mac — run: sudo bash dashboard/setup-local-domain.sh)`);
+  }
   console.log('  Projects:', listProjects().map((p) => p.id).join(', ') || '(none)');
   if (HOST !== '127.0.0.1') {
     console.log('  Note: DASHBOARD_HOST is not localhost — only use on trusted networks.');

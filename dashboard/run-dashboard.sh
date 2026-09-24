@@ -27,5 +27,5 @@ free_port() {
 }
 
 free_port
-echo "  Starting Control Desk → http://${HOST}:${PORT}"
+echo "  Starting Control Desk on http://${HOST}:${PORT} (browser opens http://${DASHBOARD_DOMAIN-testsuite.appdesign.ie}:${PORT} when /etc/hosts maps it)"
 exec node dashboard/server.js

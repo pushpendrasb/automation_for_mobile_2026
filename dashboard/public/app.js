@@ -116,7 +116,11 @@
     return data;
   }
 
-  function escapeHtml(s) {
+  /** Tick drawn as SVG so it sits dead-centre in the round badge (the ✓ glyph does not in most fonts). */
+const CHECK_SVG =
+  '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 8.5l3 3 6-7"/></svg>';
+
+function escapeHtml(s) {
     return String(s)
       .replace(/&/g, '&amp;')
       .replace(/</g, '&lt;')
@@ -245,7 +249,7 @@
       row.className = 'setup-check';
       row.dataset.ok = c.ok ? 'true' : 'false';
       row.innerHTML = `
-        <span class="setup-check-mark" aria-hidden="true">${c.ok ? '✓' : '!'}</span>
+        <span class="setup-check-mark" aria-hidden="true">${c.ok ? CHECK_SVG : '!'}</span>
         <div>
           <strong>${escapeHtml(c.label)}</strong>
           <span>${escapeHtml(c.detail || '')}</span>
