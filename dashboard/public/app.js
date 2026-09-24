@@ -59,6 +59,8 @@
     runMeta: $('runMeta'),
     runSummary: $('runSummary'),
     btnViewReport: $('btnViewReport'),
+    btnViewPdf: $('btnViewPdf'),
+    btnExportPdf: $('btnExportPdf'),
     btnStopRun: $('btnStopRun'),
     btnStopAck: $('btnStopAck'),
     btnClearLog: $('btnClearLog'),
@@ -587,12 +589,97 @@ function escapeHtml(s) {
   }
 
   function showViewReport(url) {
-    if (!url) {
-      els.btnViewReport.hidden = true;
-      return;
-    }
-    els.btnViewReport.hidden = false;
+    const pdfUrl = pdfUrlOf(url);
+    els.btnViewReport.hidden = !url;
+    els.btnViewPdf.hidden = !pdfUrl;
+    els.btnExportPdf.hidden = !pdfUrl;
+    if (!url) return;
     els.btnViewReport.href = url;
+    if (pdfUrl) {
+      els.btnViewPdf.href = pdfUrl;
+      els.btnExportPdf.dataset.reportUrl = url;
+    }
+  }
+
+  /**
+   * PDF URL for an HTML report URL (server converts it with headless Chrome).
+   * @param {string | null | undefined} htmlUrl e.g. /project-reports/vetportal/x.html
+   * @returns {string | null}
+   */
+  function pdfUrlOf(htmlUrl) {
+    if (!htmlUrl || !/\.html(\?|#|$)/.test(htmlUrl)) return null;
+    return htmlUrl.replace(/\.html(?=\?|#|$)/, '.pdf');
+  }
+
+  /**
+   * Build the PDF and download it, ready to attach to Mail, Slack, Teams…
+   * @param {string} htmlUrl HTML report URL
+   * @param {HTMLButtonElement} btn button to show progress on
+   */
+  async function exportPdf(htmlUrl, btn) {
+    const pdfUrl = pdfUrlOf(htmlUrl);
+    if (!pdfUrl) return;
+    const label = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = 'Preparing…';
+    try {
+      const res = await fetch(pdfUrl);
+      if (!res.ok) throw new Error(await res.text());
+      const blob = await res.blob();
+      const fileName = decodeURIComponent(pdfUrl.split('/').pop().split('?')[0]);
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = fileName;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+    } catch (err) {
+      alert(`Could not export PDF: ${err.message || err}`);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = label;
+    }
+  }
+
+  /**
+   * Open / PDF / Export buttons for one report, used by Reports and Run history rows.
+   * @param {string} htmlUrl HTML report URL
+   * @param {{ openLabel?: string, openTitle?: string }} [opts]
+   * @returns {HTMLDivElement}
+   */
+  function reportActions(htmlUrl, opts = {}) {
+    const wrap = document.createElement('div');
+    wrap.className = 'report-actions';
+    const open = document.createElement('a');
+    open.className = 'btn btn-run';
+    open.href = htmlUrl;
+    open.target = '_blank';
+    open.rel = 'noopener';
+    open.textContent = opts.openLabel || 'Open';
+    if (opts.openTitle) open.title = opts.openTitle;
+    wrap.appendChild(open);
+
+    const pdfUrl = pdfUrlOf(htmlUrl);
+    if (pdfUrl) {
+      const pdf = document.createElement('a');
+      pdf.className = 'btn btn-ghost';
+      pdf.href = pdfUrl;
+      pdf.target = '_blank';
+      pdf.rel = 'noopener';
+      pdf.textContent = 'PDF';
+      pdf.title = 'Open this report as a PDF';
+      wrap.appendChild(pdf);
+
+      const exp = document.createElement('button');
+      exp.type = 'button';
+      exp.className = 'btn btn-ghost';
+      exp.textContent = 'Export';
+      exp.title = 'Download this report as a PDF to share';
+      exp.addEventListener('click', () => exportPdf(htmlUrl, exp));
+      wrap.appendChild(exp);
+    }
+    return wrap;
   }
 
   function renderRunSummaryBox(run) {
@@ -778,6 +865,61 @@ function escapeHtml(s) {
     });
     row.appendChild(runBtn);
     return row;
+  }
+
+  /** Inline SVG icons (stroke style) for tool cards, keyed by tool kind. */
+  const TOOL_ICONS = {
+    device:
+      '<rect x="7" y="2" width="10" height="20" rx="2"/><path d="M11 18h2"/>',
+    report:
+      '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M8 13h8M8 17h5"/>',
+    stop: '<circle cx="12" cy="12" r="9"/><path d="M9 9l6 6M15 9l-6 6"/>',
+    list: '<path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/>',
+    run: '<circle cx="12" cy="12" r="9"/><path d="M10 8.5l5 3.5-5 3.5z"/>',
+    tool: '<path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18v3h3l6.3-6.3a4 4 0 0 0 5.4-5.4l-2.5 2.5-2.4-.6-.6-2.4z"/>',
+  };
+
+  /**
+   * Friendly title/description for known tool scripts; first match wins.
+   * Unknown scripts keep their generated title and get the generic tool icon.
+   */
+  const TOOL_META = [
+    { re: /^check:devices:ios$/, kind: 'device', title: 'Check iOS devices', desc: 'Connected iPhones and simulators' },
+    { re: /^check:devices:android$/, kind: 'device', title: 'Check Android devices', desc: 'adb devices and emulators' },
+    { re: /^check:devices$/, kind: 'device', title: 'Check all devices', desc: 'iOS and Android in one go' },
+    { re: /^report:catalog:open$/, kind: 'report', title: 'Open test catalog', desc: 'Every test case, in the browser' },
+    { re: /^report:catalog$/, kind: 'report', title: 'Build test catalog', desc: 'Regenerate the test-case catalog' },
+    { re: /^report:open$/, kind: 'report', title: 'Open latest report', desc: 'Last HTML report in the browser' },
+    { re: /^kill:wda:list$/, kind: 'list', title: 'List WebDriverAgent', desc: 'Show running WDA processes' },
+    { re: /^kill:wda$/, kind: 'stop', title: 'Stop WebDriverAgent', desc: 'Frees a stuck iPhone session' },
+    { re: /^test$/, kind: 'run', title: 'Run default suite', desc: "Project's default test run" },
+  ];
+
+  /**
+   * Turn plain "other" script rows into tool cards: icon, friendly title,
+   * short description and the npm command as a small tag.
+   * @param {HTMLElement} listEl container filled by fillScriptList
+   */
+  function decorateToolRows(listEl) {
+    listEl.querySelectorAll('.script-row').forEach((row) => {
+      const meta = TOOL_META.find((m) => m.re.test(row.dataset.script)) || { kind: 'tool' };
+      row.classList.add('tool-card', `tool-card--${meta.kind}`);
+      const icon = document.createElement('span');
+      icon.className = 'tool-icon';
+      icon.setAttribute('aria-hidden', 'true');
+      icon.innerHTML = `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${TOOL_ICONS[meta.kind]}</svg>`;
+      const left = row.querySelector('.left');
+      left.insertBefore(icon, left.querySelector('.script-info'));
+      if (meta.title) row.querySelector('.name').textContent = meta.title;
+      const cmd = row.querySelector('.cmd');
+      if (cmd) cmd.title = cmd.textContent;
+      if (meta.desc) {
+        const desc = document.createElement('p');
+        desc.className = 'tool-desc';
+        desc.textContent = meta.desc;
+        row.querySelector('.script-title-row').after(desc);
+      }
+    });
   }
 
   /** Reset busy/queue chrome on a row; keep pass/fail marks unless fullReset. */
@@ -1098,13 +1240,7 @@ function escapeHtml(s) {
           )} · ${escapeHtml(r.name)}</p>
         </div>
       `;
-      const a = document.createElement('a');
-      a.className = 'btn btn-run';
-      a.href = r.url;
-      a.target = '_blank';
-      a.rel = 'noopener';
-      a.textContent = 'Open';
-      row.appendChild(a);
+      row.appendChild(reportActions(r.url));
       els.reportList.appendChild(row);
     }
   }
@@ -1195,6 +1331,7 @@ function escapeHtml(s) {
     if (other.length) {
       els.colOther.hidden = false;
       fillScriptList(els.listOther, other, id, '');
+      decorateToolRows(els.listOther);
     } else {
       els.colOther.hidden = true;
       els.listOther.innerHTML = '';
@@ -1507,6 +1644,9 @@ function escapeHtml(s) {
     }
   }
 
+  /** Run history panel shows only the newest runs (the server keeps more). */
+  const HISTORY_ROWS_SHOWN = 10;
+
   async function loadHistory() {
     try {
       const data = await api('/api/history');
@@ -1524,7 +1664,7 @@ function escapeHtml(s) {
           durationMs: newest.durationMs,
         });
       }
-      for (const h of hist) {
+      for (const h of hist.slice(0, HISTORY_ROWS_SHOWN)) {
         const row = document.createElement('div');
         row.className = 'history-row';
         const stClass =
@@ -1546,18 +1686,16 @@ function escapeHtml(s) {
           </div>
         `;
         if (h.primaryReportUrl) {
-          const a = document.createElement('a');
-          a.className = 'btn btn-run';
-          a.href = h.primaryReportUrl;
-          a.target = '_blank';
-          a.rel = 'noopener';
           // Archived snapshots keep this run's report; old entries may still point at latest
           const isSnapshot = /-\d{8}-/.test(h.primaryReportUrl) || Boolean(h.archivedReportName);
-          a.textContent = isSnapshot ? 'This run' : 'Latest';
-          a.title = isSnapshot
-            ? 'Open the report saved for this run'
-            : 'Opens current latest report (no snapshot for older runs)';
-          row.appendChild(a);
+          row.appendChild(
+            reportActions(h.primaryReportUrl, {
+              openLabel: isSnapshot ? 'This run' : 'Latest',
+              openTitle: isSnapshot
+                ? 'Open the report saved for this run'
+                : 'Opens current latest report (no snapshot for older runs)',
+            })
+          );
         }
         els.historyList.appendChild(row);
       }
@@ -1566,6 +1704,11 @@ function escapeHtml(s) {
     }
   }
 
+  els.btnExportPdf.addEventListener('click', () => {
+    if (els.btnExportPdf.dataset.reportUrl) {
+      exportPdf(els.btnExportPdf.dataset.reportUrl, els.btnExportPdf);
+    }
+  });
   els.btnAppiumStart.addEventListener('click', startAppium);
   els.btnAppiumStop.addEventListener('click', stopAppium);
   els.btnAppiumRefresh.addEventListener('click', refreshAppium);

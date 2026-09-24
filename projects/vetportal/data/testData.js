@@ -103,6 +103,16 @@ const composeData = {
   medicineSearch: process.env.COMPOSE_MEDICINE_SEARCH || '',
   quantity: process.env.COMPOSE_QUANTITY || '1',
   animalId: process.env.COMPOSE_ANIMAL_ID || 'Automation test animal',
+  /**
+   * Add Medicine fallbacks, used only when the drug leaves a field empty.
+   * Withdrawal Period / Notes are picked from their "Select" list first;
+   * this text is typed only when that list is empty. Unit and Route always
+   * come from their lists (first entry).
+   */
+  withdrawalPeriod: process.env.COMPOSE_WITHDRAWAL_PERIOD || 'Automation test withdrawal period',
+  withdrawalNotes: process.env.COMPOSE_WITHDRAWAL_NOTES || 'Automation test withdrawal notes',
+  dosage: process.env.COMPOSE_DOSAGE || '1 ml',
+  recommendation: process.env.COMPOSE_RECOMMENDATION || 'Automation test recommendation',
 
   /** ComposeNewScript.js / Messages.js toasts */
   clientBlankToast: 'Enter/select client name',

@@ -9,7 +9,8 @@
  * Flow: Home → My Prescriptions → Compose New Script → Select Format
  *   tab 1 Vet Practice (practice preselected) → Next
  *   tab 2 Client/Dispenser (client, animal category/type) → Next
- *   tab 3 Medicine (Add Medicine → compendium → quantity + animal ID → Add)
+ *   tab 3 Medicine (Add Medicine → compendium → fill any empty Withdrawal
+ *     Period / Notes, Qty/Unit, Route, Dosage, Recommendation + animal ID → Add)
  *   → Compose and Dispense → signature popup → "Prescription created successfully".
  */
 const { ui } = require('./ui');
@@ -19,6 +20,25 @@ const C = TEST_IDS.compose;
 
 /** Header bottom / bottom button used to keep compose fields in the tappable area. */
 const COMPOSE_AREA = { topId: C.tab(1), coverIds: [C.submit] };
+
+/**
+ * Add Medicine: the Animal ID panel and Add button are fixed at the bottom;
+ * the panel's "ⓘ" marks its top edge.
+ */
+const MEDICINE_AREA = {
+  coverIds: [TEST_IDS.animalId.placeholderInfo, TEST_IDS.addMedicine.submit],
+};
+
+/** Fallback texts for empty Add Medicine fields (data/testData.js composeData). */
+const composeDefaults = () => {
+  const { composeData } = require('../data/testData');
+  return {
+    withdrawalPeriod: composeData.withdrawalPeriod,
+    withdrawalNotes: composeData.withdrawalNotes,
+    dosage: composeData.dosage,
+    recommendation: composeData.recommendation,
+  };
+};
 
 class ComposeScriptPage {
   // ---------------------------------------------------------------- helpers
@@ -117,22 +137,38 @@ class ComposeScriptPage {
    * @param {string} name client name as shown in the list
    */
   async selectClient(name) {
+    await ui.withoutIdleWait(() => this.#pickClient(name));
+  }
+
+  /**
+   * selectClient body; runs with WDA idle-waits off (see ui.withoutIdleWait).
+   * Speed notes: with the full client list on screen every element query is
+   * slow, so the search text goes in via raw key actions (ui.typeByKeys) and
+   * only the first name is typed — the row match below is on the full name.
+   * Return closes the keyboard, so the first tap on the row selects it.
+   */
+  async #pickClient(name) {
     await this.#tapComposeField(C.clientNameValue);
     const search = await ui.waitForTestId(TEST_IDS.searchPopup.search, 15000);
-    await search.setValue(name.toLowerCase());
+    await ui.typeByKeys(search, name.trim().split(/\s+/)[0].toLowerCase(), { submit: true });
     const selector = this.#rowSelector('searchPopup.row.', name, { beginsWith: true });
     await ui.waitFor(selector, 15000, `client "${name}" in the Client Name list`);
-    // The list sits in a KeyboardAwareScrollView: with the keyboard up, the
-    // first tap on a row only closes the keyboard. Close it on the header first.
-    const header = await ui.rectOf(await ui.waitForTestId(TEST_IDS.searchPopup.close));
-    await ui.dismissKeyboard({ x: header.x + header.width + 120, y: header.y + header.height / 2 });
+    // Retry only if a tap is swallowed (e.g. keyboard still up); stop once the popup closes.
     for (let attempt = 0; attempt < 3; attempt++) {
       const row = await ui.firstDisplayed(selector);
       if (!row) {
         break;
       }
       await row.click();
-      await browser.pause(800);
+      const closed = await browser
+        .waitUntil(async () => !(await ui.isTestIdShown(TEST_IDS.searchPopup.search)), {
+          timeout: 1500,
+          interval: 200,
+        })
+        .catch(() => false);
+      if (closed) {
+        break;
+      }
     }
     await ui.waitForTestId(C.clientNameValue, 15000);
     await browser.waitUntil(async () => (await this.getClientName()).includes(name), {
@@ -377,12 +413,15 @@ class ComposeScriptPage {
   }
 
   /**
-   * Add Medicine → Drug Compendium → pick a drug → fill what the drug does not
-   * prefill (quantity, animal ID free text) → Add. Product name, VPA No,
-   * active ingredient, withdrawal, dosage, unit and route come from the drug.
-   * @param {{ search?: string, quantity: string, animalId: string }} medicine
+   * Add Medicine → Drug Compendium → pick a drug → check Withdrawal Period,
+   * Withdrawal Notes, Qty/Unit, Route, Dosage and Recommendation and fill any
+   * the drug left empty (see #fillEmptyMedicineFields) → animal ID → Add.
+   * @param {{ search?: string, quantity: string, animalId: string,
+   *   fallbacks?: { withdrawalPeriod?: string, withdrawalNotes?: string,
+   *     dosage?: string, recommendation?: string } }} medicine
+   *   fallbacks override composeData texts typed into empty fields.
    */
-  async addMedicine({ search = '', quantity, animalId }) {
+  async addMedicine({ search = '', quantity, animalId, fallbacks = {} }) {
     const index = (await $$('-ios predicate string:name BEGINSWITH "compose.medicine."')).length;
     await ui.tapTestId(index === 0 ? C.addMedicine : C.addMoreMedicine);
 
@@ -391,19 +430,141 @@ class ComposeScriptPage {
       // The compendium searches on Return / end editing, not while typing.
       await box.setValue(`${search}\n`);
     }
-    const drug = await ui.waitForTestId(TEST_IDS.compendium.row(0), 30000);
+    await ui.waitForTestId(TEST_IDS.compendium.row(0), 30000);
     await browser.pause(500);
-    await drug.click();
+    // The list can re-render as results arrive (stale element): re-find and retry.
+    await browser.waitUntil(
+      async () => {
+        const drug = await ui.byTestId(TEST_IDS.compendium.row(0));
+        return Boolean(drug) && drug.click().then(() => true, () => false);
+      },
+      { timeout: 15000, interval: 500, timeoutMsg: 'Could not tap the first drug in the compendium' },
+    );
 
     const M = TEST_IDS.addMedicine;
     await ui.waitForTestId(M.productName, 20000);
+    // Drug details (withdrawal, route, dosage…) are filled in async after the pick.
+    await browser.pause(1000);
     ui.resetLayoutCache();
-    await this.#typeInto(M.quantity, quantity, { coverIds: [M.submit] });
+    await this.#fillEmptyMedicineFields({ quantity, ...fallbacks });
     await this.#typeInto(TEST_IDS.animalId.freeText, animalId, { coverIds: [M.submit] });
     await ui.dismissKeyboard({ x: 10, y: 120 });
     await ui.tapTestId(M.submit);
 
     await ui.waitForTestId(C.medicine(index), 20000);
+    ui.resetLayoutCache();
+  }
+
+  /**
+   * Add Medicine: fill every required field the chosen drug left empty, top
+   * to bottom — Withdrawal Period, Withdrawal Notes, Qty, Unit, Route, Dosage,
+   * Recommendation. Fields the drug already filled are left as they are.
+   * Withdrawal fields use the first "Select" list entry (typed text if the list
+   * is empty); Unit and Route use the first list entry.
+   * @param {{ quantity: string, withdrawalPeriod?: string, withdrawalNotes?: string,
+   *   dosage?: string, recommendation?: string }} values
+   */
+  async #fillEmptyMedicineFields(values) {
+    const M = TEST_IDS.addMedicine;
+    const d = { ...composeDefaults(), ...values };
+
+    // Read everything once (iOS reports values of off-screen fields too).
+    const unitLabel = (await this.#rawLabel(M.unit)).trim();
+    const current = {
+      'Withdrawal Period': await this.#valueOf(M.withdrawalPeriod),
+      'Withdrawal Notes': await this.#valueOf(M.withdrawalNotes),
+      Qty: await this.#valueOf(M.quantity),
+      Unit: unitLabel === 'Select' ? '' : unitLabel,
+      Route: await this.#valueOf(M.route),
+      Dosage: await this.#valueOf(M.dosage),
+      Recommendation: await this.#valueOf(M.recommendation),
+    };
+    console.log(`[compose] Add Medicine as opened: ${JSON.stringify(current)}`);
+
+    /** How to fill each field, in on-screen order. */
+    const fillers = {
+      'Withdrawal Period': () =>
+        this.#pickOrType(M.withdrawalPeriodSelect, M.withdrawalPeriod, d.withdrawalPeriod),
+      'Withdrawal Notes': () =>
+        this.#pickOrType(M.withdrawalNotesSelect, M.withdrawalNotes, d.withdrawalNotes),
+      Qty: () => this.#typeInto(M.quantity, d.quantity, MEDICINE_AREA),
+      Unit: () => this.#pickFirstFromList(M.unit, 'Unit'),
+      Route: () => this.#pickFirstFromList(M.routeSelect, 'Route'),
+      Dosage: () => this.#typeInto(M.dosage, d.dosage, MEDICINE_AREA),
+      Recommendation: () => this.#typeInto(M.recommendation, d.recommendation, MEDICINE_AREA),
+    };
+    const filled = [];
+    for (const [field, fill] of Object.entries(fillers)) {
+      if (!current[field].trim()) {
+        await fill();
+        filled.push(field);
+      }
+    }
+    console.log(
+      `[compose] Add Medicine: ${filled.length ? `filled empty ${filled.join(', ')}` : 'all fields prefilled by the drug'}`,
+    );
+  }
+
+  /** Label of a testID even when it is scrolled off screen ('' if missing). */
+  async #rawLabel(id) {
+    const el = (await $$(ui.testIdSelector(id)))[0];
+    if (!el) {
+      return '';
+    }
+    return String((await el.getAttribute(ui.isAndroid() ? 'text' : 'label').catch(() => '')) || '');
+  }
+
+  /** Scroll an Add Medicine control clear of the header / Animal ID footer and tap it. */
+  async #tapMedicineControl(id) {
+    const el = await ui.scrollToTestId(id, { ...MEDICINE_AREA, keepKeyboard: false });
+    await el.click();
+  }
+
+  /**
+   * Single-choice list (Unit, Route): open it and tap the first row, which
+   * closes the popup and sets the value.
+   * @param {string} openerId testID that opens the CatPopup
+   * @param {string} what field name for errors
+   */
+  async #pickFirstFromList(openerId, what) {
+    await this.#tapMedicineControl(openerId);
+    const row = await ui.waitForTestId(TEST_IDS.catPopup.row(0), 8000).catch(() => null);
+    if (!row) {
+      await ui.tapTestId(TEST_IDS.catPopup.backdrop, 3000).catch(() => {});
+      throw new Error(`${what} list is empty — cannot pick a ${what}`);
+    }
+    await row.click();
+    await this.#waitCatPopupClosed();
+  }
+
+  /**
+   * Multi-select list (Withdrawal Period / Notes): tick the first row and Save.
+   * If the list has no rows, close it and type `text` into the field instead.
+   */
+  async #pickOrType(selectId, fieldId, text) {
+    await this.#tapMedicineControl(selectId);
+    const row = await ui.waitForTestId(TEST_IDS.catPopup.row(0), 5000).catch(() => null);
+    if (row) {
+      await row.click();
+      await ui.tapTestId(TEST_IDS.catPopup.save, 5000);
+      await this.#waitCatPopupClosed();
+      if (await this.#valueOf(fieldId)) {
+        return;
+      }
+    } else {
+      await ui.tapTestId(TEST_IDS.catPopup.backdrop, 3000).catch(() => {});
+      await this.#waitCatPopupClosed();
+    }
+    await this.#typeInto(fieldId, text, MEDICINE_AREA);
+  }
+
+  async #waitCatPopupClosed() {
+    await browser
+      .waitUntil(async () => !(await ui.isTestIdShown(TEST_IDS.catPopup.save)), {
+        timeout: 5000,
+        interval: 200,
+      })
+      .catch(() => {});
     ui.resetLayoutCache();
   }
 

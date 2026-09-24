@@ -319,6 +319,32 @@ class Ui {
   }
 
   /**
+   * Run `fn` with WDA's "wait for app idle" turned off, then restore WDA
+   * defaults (10s idle, 2s animation cool-off). Use on screens that re-render
+   * on every keystroke (search lists): WDA otherwise waits for quiescence
+   * before each query. Callers must poll for what they need, as elements may
+   * still be animating.
+   * @template T
+   * @param {() => Promise<T>} fn
+   * @returns {Promise<T>}
+   */
+  async withoutIdleWait(fn) {
+    if (this.isAndroid()) {
+      return fn();
+    }
+    await browser
+      .updateSettings({ waitForIdleTimeout: 0, animationCoolOffTimeout: 0 })
+      .catch(() => {});
+    try {
+      return await fn();
+    } finally {
+      await browser
+        .updateSettings({ waitForIdleTimeout: 10, animationCoolOffTimeout: 2 })
+        .catch(() => {});
+    }
+  }
+
+  /**
    * iOS: tap the keyboard accessory "Done" if exposed, else tap `blankPoint` —
    * an empty spot in the form (RN keyboardShouldPersistTaps="handled" closes the
    * keyboard on a tap that no control handles). Never `mobile: hideKeyboard`:
@@ -353,6 +379,38 @@ class Ui {
       await browser.pause(100);
     }
     await browser.pause(150);
+  }
+
+  /**
+   * Tap a field by its coordinates and type with raw key actions, optionally
+   * pressing Return. Unlike setValue/addValue, this skips WDA's per-key
+   * element lookup, which takes seconds when a long list is on screen.
+   * Android falls back to addValue.
+   * @param {WebdriverIO.Element} el text field
+   * @param {string} text
+   * @param {{ submit?: boolean }} [opts] submit: press Return (closes the keyboard)
+   */
+  async typeByKeys(el, text, { submit = false } = {}) {
+    if (this.isAndroid()) {
+      await el.addValue(text);
+      if (submit) {
+        await browser.keys('\uE007');
+      }
+      return;
+    }
+    const r = await this.rectOf(el);
+    await this.tapAt(r.x + r.width / 2, r.y + r.height / 2);
+    const keys = [...text, ...(submit ? ['\uE007'] : [])];
+    await browser.performActions([
+      {
+        type: 'key',
+        id: 'keyboard',
+        actions: keys.flatMap((k) => [
+          { type: 'keyDown', value: k },
+          { type: 'keyUp', value: k },
+        ]),
+      },
+    ]);
   }
 
   async tapAt(x, y) {

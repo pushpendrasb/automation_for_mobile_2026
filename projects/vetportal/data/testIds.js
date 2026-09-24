@@ -138,11 +138,24 @@ const TEST_IDS = {
   },
   addMedicine: {
     productName: 'addMedicine.productName',
+    /** Withdrawal Period / Notes: free-text boxes + "Select" list (multi-select CatPopup). */
+    withdrawalPeriod: 'addMedicine.withdrawalPeriod',
+    withdrawalPeriodSelect: 'addMedicine.withdrawalPeriodSelect',
+    withdrawalNotes: 'addMedicine.withdrawalNotes',
+    withdrawalNotesSelect: 'addMedicine.withdrawalNotesSelect',
     quantity: 'addMedicine.quantity',
+    /** Unit picker; its label is the selected unit ("Select" when none). */
+    unit: 'addMedicine.unit',
+    /** Route: read-only TextInput + overlay that opens the Route CatPopup. */
+    route: 'addMedicine.route',
+    routeSelect: 'addMedicine.routeSelect',
     dosage: 'addMedicine.dosage',
+    recommendation: 'addMedicine.recommendation',
     submit: 'addMedicine.submit',
   },
   animalId: {
+    /** "ⓘ" next to the Animal ID title — top edge of the fixed footer panel. */
+    placeholderInfo: 'animalId.placeholderInfo',
     freeText: 'animalId.freeText',
     age: 'animalId.age',
   },

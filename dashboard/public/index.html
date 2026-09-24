@@ -298,9 +298,19 @@
           </div>
         </div>
 
-        <div class="other-scripts" id="colOther" hidden>
-          <h3 class="section-label">Devices · Reports · Other</h3>
-          <div class="script-list" id="listOther"></div>
+        <div class="other-scripts platform-col platform-col--tools" id="colOther" hidden>
+          <div class="platform-head">
+            <span class="platform-badge platform-badge--tools" aria-hidden="true">
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18v3h3l6.3-6.3a4 4 0 0 0 5.4-5.4l-2.5 2.5-2.4-.6-.6-2.4z" />
+              </svg>
+            </span>
+            <div>
+              <h3>Tools</h3>
+              <p>Devices · reports · maintenance</p>
+            </div>
+          </div>
+          <div class="script-list tool-grid" id="listOther"></div>
         </div>
 
         <div class="reports-block" id="reportsBlock">
@@ -337,6 +347,25 @@
                 hidden
                 >View report</a
               >
+              <a
+                class="btn btn-ghost"
+                id="btnViewPdf"
+                href="#"
+                target="_blank"
+                rel="noopener"
+                title="Open this report as a PDF"
+                hidden
+                >PDF</a
+              >
+              <button
+                type="button"
+                class="btn btn-ghost"
+                id="btnExportPdf"
+                title="Download this report as a PDF to share"
+                hidden
+              >
+                Export PDF
+              </button>
               <button type="button" class="btn btn-danger" id="btnStopRun" hidden>
                 Stop script
               </button>
@@ -363,7 +392,7 @@
         <section class="panel history-panel">
           <div class="panel-head">
             <h2>Run history</h2>
-            <p>Last 25 runs · each new run saves its own report snapshot</p>
+            <p>Last 10 runs · each new run saves its own report snapshot</p>
           </div>
           <div class="history-list" id="historyList">
             <p class="muted">No history yet.</p>

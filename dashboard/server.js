@@ -408,6 +408,104 @@ function resolveReportFile(projectId, fileName) {
   return full;
 }
 
+/**
+ * Locate a Chromium-based browser for headless PDF printing.
+ * Override with CHROME_PATH in the environment.
+ * @returns {string | null}
+ */
+function findChrome() {
+  const candidates = [
+    process.env.CHROME_PATH,
+    '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+    '/Applications/Chromium.app/Contents/MacOS/Chromium',
+    '/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge',
+    '/Applications/Brave Browser.app/Contents/MacOS/Brave Browser',
+    '/usr/bin/google-chrome',
+    '/usr/bin/chromium',
+    '/usr/bin/chromium-browser',
+  ].filter(Boolean);
+  return candidates.find((p) => fs.existsSync(p)) || null;
+}
+
+/**
+ * Convert an HTML report to PDF with headless Chrome.
+ * PDFs are cached in reports/pdf/ and rebuilt only when the HTML is newer.
+ * @param {string} htmlPath absolute path of the report HTML
+ * @returns {Promise<string>} absolute path of the PDF
+ */
+function reportToPdf(htmlPath) {
+  const pdfDir = path.join(path.dirname(htmlPath), 'pdf');
+  const pdfPath = path.join(pdfDir, path.basename(htmlPath).replace(/\.html$/, '.pdf'));
+  if (
+    fs.existsSync(pdfPath) &&
+    fs.statSync(pdfPath).mtimeMs >= fs.statSync(htmlPath).mtimeMs
+  ) {
+    return Promise.resolve(pdfPath);
+  }
+  const chrome = findChrome();
+  if (!chrome) {
+    return Promise.reject(
+      new Error('Google Chrome not found — install it or set CHROME_PATH to export PDF.')
+    );
+  }
+  fs.mkdirSync(pdfDir, { recursive: true });
+  const tmp = `${pdfPath}.tmp`;
+  const profile = fs.mkdtempSync(path.join(require('os').tmpdir(), 'desk-pdf-'));
+  return new Promise((resolve, reject) => {
+    const child = spawn(
+      chrome,
+      [
+        '--headless=new',
+        '--disable-gpu',
+        '--no-first-run',
+        '--no-default-browser-check',
+        '--use-mock-keychain',
+        '--password-store=basic',
+        '--disable-background-networking',
+        '--disable-component-update',
+        '--disable-sync',
+        '--disable-extensions',
+        `--user-data-dir=${profile}`,
+        '--no-pdf-header-footer',
+        '--run-all-compositor-stages-before-draw',
+        '--virtual-time-budget=4000',
+        `--print-to-pdf=${tmp}`,
+        `file://${htmlPath}`,
+      ],
+      { stdio: ['ignore', 'pipe', 'pipe'] }
+    );
+    let output = '';
+    let settled = false;
+    const finish = (err) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      // On macOS Chrome often stays alive after writing the PDF, so stop it ourselves.
+      if (child.exitCode === null) child.kill('SIGKILL');
+      fs.rm(profile, { recursive: true, force: true }, () => {});
+      if (!err && fs.existsSync(tmp) && fs.statSync(tmp).size > 0) {
+        fs.renameSync(tmp, pdfPath);
+        resolve(pdfPath);
+      } else {
+        fs.rm(tmp, { force: true }, () => {});
+        reject(err || new Error(`PDF export failed. ${output.slice(-300)}`));
+      }
+    };
+    const onData = (d) => {
+      output += d;
+      if (/bytes written to file/.test(output)) finish();
+    };
+    child.stdout.on('data', onData);
+    child.stderr.on('data', onData);
+    const timer = setTimeout(
+      () => finish(new Error('PDF export timed out after 60s.')),
+      60000
+    );
+    child.on('error', (e) => finish(e));
+    child.on('close', () => finish());
+  });
+}
+
 function scriptGroup(name) {
   if (name.startsWith('test:ios')) return 'iOS';
   if (name.startsWith('test:android')) return 'Android';
@@ -1405,6 +1503,34 @@ const server = http.createServer(async (req, res) => {
         'Cache-Control': 'no-store',
       });
       fs.createReadStream(full).pipe(res);
+      return;
+    }
+
+    // Same report as PDF (?download=1 forces a file download instead of inline view)
+    const reportPdfMatch = pathname.match(/^\/project-reports\/([^/]+)\/([^/]+)\.pdf$/);
+    if (method === 'GET' && reportPdfMatch) {
+      const projectId = decodeURIComponent(reportPdfMatch[1]);
+      const baseName = decodeURIComponent(reportPdfMatch[2]);
+      const full = resolveReportFile(projectId, `${baseName}.html`);
+      if (!full) {
+        res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
+        res.end('Report not found. Run a test first to generate it.');
+        return;
+      }
+      try {
+        const pdf = await reportToPdf(full);
+        const disposition = u.searchParams.get('download') ? 'attachment' : 'inline';
+        res.writeHead(200, {
+          'Content-Type': 'application/pdf',
+          'Content-Disposition': `${disposition}; filename="${baseName}.pdf"`,
+          'Content-Length': fs.statSync(pdf).size,
+          'Cache-Control': 'no-store',
+        });
+        fs.createReadStream(pdf).pipe(res);
+      } catch (e) {
+        res.writeHead(500, { 'Content-Type': 'text/plain; charset=utf-8' });
+        res.end(String(e.message || e));
+      }
       return;
     }
 
