@@ -428,7 +428,7 @@ function buildBrandedHtml(payload, opts, brand, h) {
     executed === 0
       ? { cls: 'none', icon: '–', text: 'No tests were executed in this run' }
       : failed === 0
-        ? { cls: 'good', icon: '✓', text: `All ${passed} check${passed === 1 ? '' : 's'} passed` }
+        ? { cls: 'good', icon: '✓', text: passed === 1 ? '1 check passed' : `All ${passed} checks passed` }
         : { cls: 'bad', icon: '!', text: `${failed} of ${executed} check${executed === 1 ? '' : 's'} need${failed === 1 ? 's' : ''} attention` };
 
   // Modules that actually ran; the rest are listed in one line instead of empty bars.
