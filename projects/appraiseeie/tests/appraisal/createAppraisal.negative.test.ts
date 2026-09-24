@@ -78,7 +78,7 @@ describe('AppraiseeIE — Create Appraisal (negative: duplicate registration)', 
     clientStep('Vehicle Photos — add images and attempt SAVE (expect rejection)');
     let saveError: Error | null = null;
     try {
-      await CreateAppraisalPage.completePhotosStep(appraisalData.vehiclePhotoSlots);
+      await CreateAppraisalPage.completePhotosStep([...appraisalData.vehiclePhotoSlots]);
     } catch (err) {
       saveError = err instanceof Error ? err : new Error(String(err));
     }

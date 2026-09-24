@@ -7,6 +7,7 @@
 | **Login** (email + password) | `ViewController.h` / `ViewController.m` | `LoginPage.ts` |
 | **Role picker** (after login) | `LoginUserRoleVC` | `UserRolePage.ts` |
 | **Create Appraisal** (4 steps) | `TradeIn.mm` | `CreateAppraisalPage.ts` |
+| **Appraisals History** (My / All lists) | `HistoryViewController` | `HistoryPage.ts` |
 
 Login accessibility ids live on **ViewController.m** (`login_email`, …).  
 Create Appraisal ids live on **TradeIn.mm** (`tradein_customer_name`, `tradein_req_next`, `tradein_photos_save`, …).
@@ -25,6 +26,7 @@ npm run check:devices:ios
 npm run test:ios:smoke
 npm run test:ios:signin
 npm run test:ios:appraisal
+npm run test:ios:history
 ```
 
 Credentials: `TEST_USER` / `TEST_PASSWORD` in `.env`  
@@ -35,3 +37,13 @@ Optional: `APPRAISEE_ROLE_INDEX` (default `0`) for which role row to tap.
 - Data: Name **Paul**, email **sami@appdesign.ie**, plate **141D6333**, random mobile
 - `APPRAISEE_TYRE_DAMAGE=true|false` (default true) · `APPRAISEE_ALLOY_DAMAGE` (default false)
 - Photos: needs at least one image in the Photos library (Simulator gets `fixtures/appraisal-sample.png` via simctl). Set `APPRAISEE_SKIP_PHOTOS=true` to skip gallery picks while debugging other steps.
+
+### Appraisals History
+
+Specs live under `tests/history/` (separate from create-appraisal flows).
+
+- `npm run test:ios:history` — all history specs (`tests/history/**/*.test.ts`)
+- `npm run test:ios:history:screen` — `AP-HI-P01` only (`history.screen.test.ts`)
+- `npm run test:android:history` — same specs on Android (when the app package is configured)
+
+Requires a signed-in account with at least one appraisal visible on **My Appraisals** and/or **All Appraisals**.

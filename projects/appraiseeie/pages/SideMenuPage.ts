@@ -322,6 +322,35 @@ export class SideMenuPage {
     }
     throw new Error('CREATE NEW APPRAISAL / side_menu_item_0 not found');
   }
+
+  /**
+   * Tap APPRAISALS HISTORY (row 1 → HistoryViewController).
+   * Closes the drawer and shows the appraisal history list.
+   */
+  async tapAppraisalsHistory(): Promise<void> {
+    await this.waitForOpen();
+    clientLog('Opening Appraisals History from the side menu');
+    const selectors = [
+      this.id(TEST_IDS.sideMenu.appraisalsHistory),
+      '~APPRAISALS HISTORY',
+      '-ios predicate string:label == "APPRAISALS HISTORY" OR name == "APPRAISALS HISTORY"',
+      '-ios class chain:**/XCUIElementTypeCell[`label == "APPRAISALS HISTORY"`]',
+    ];
+    for (const sel of selectors) {
+      try {
+        const el = await $(sel);
+        if (await el.isDisplayed().catch(() => false)) {
+          await el.click();
+          clientLog('Appraisals History tapped');
+          await browser.pause(400);
+          return;
+        }
+      } catch {
+        /* next */
+      }
+    }
+    throw new Error('APPRAISALS HISTORY / side_menu_item_1 not found');
+  }
 }
 
 export default new SideMenuPage();

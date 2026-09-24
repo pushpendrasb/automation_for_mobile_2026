@@ -493,6 +493,16 @@ function listSuites(projectId) {
     });
   }
 
+  if (scripts.includes('test:ios:history')) {
+    suites.push({
+      id: 'ios-history',
+      title: 'iOS Appraisals History',
+      scripts: ['test:ios:history'],
+      description:
+        'Side menu APPRAISALS HISTORY — My / All Appraisals cards and detail tabs (AP-HI-P01)',
+    });
+  }
+
   if (scripts.includes('test:ios:smoke') || scripts.includes('test:ios:screens')) {
     const smoke = ['test:ios:smoke', 'test:ios:screens'].filter((n) =>
       scripts.includes(n)
@@ -799,13 +809,102 @@ function pumpQueue() {
   if (activeRun && activeRun.status === 'running') return;
   const next = runQueue.shift();
   if (!next) return;
-  beginScriptRun(next.projectId, next.script, { fromQueue: true });
+  beginScriptRun(next.projectId, next.script, {
+    fromQueue: true,
+    env: next.env,
+    controlDeskBody: next.controlDeskBody,
+  });
 }
 
 /**
  * Start immediately or enqueue if busy.
  */
-function enqueueOrRun(projectId, script) {
+/** Known step-4 photo captions. Anything else from the dashboard is dropped. */
+const APPRAISAL_PHOTO_SLOTS = [
+  'FRONT',
+  'DRIVER FRONT',
+  'DRIVER REAR',
+  'REAR',
+  'PASSENGER REAR',
+  'PASSENGER FRONT',
+];
+
+const APPRAISAL_DAMAGE_SLOTS = [
+  'DRIVER FRONT',
+  'DRIVER REAR',
+  'PASSENGER FRONT',
+  'PASSENGER REAR',
+  'EXTRA',
+];
+
+/**
+ * Control Desk success run: env lists exactly the checked boxes (comma-separated).
+ * Empty string means no gallery picks for that step.
+ */
+function normalizeSlotList(arr, order) {
+  const allowed = new Set(order);
+  const picked = (Array.isArray(arr) ? arr : [])
+    .map((s) => String(s || '').trim().toUpperCase())
+    .filter((s) => allowed.has(s));
+  return order.filter((s) => picked.includes(s));
+}
+
+/** Persist Control Desk checkbox state for the success script (read by the test). */
+function writeControlDeskAppraisalRun(projectId, body) {
+  const cwd = path.join(PROJECTS_DIR, projectId);
+  const file = path.join(cwd, '.control-desk-appraisal-run.json');
+  const payload = {
+    source: 'control-desk',
+    writtenAt: Date.now(),
+    tyreDamage: Boolean(body.tyreDamage),
+    alloyDamage: Boolean(body.alloyDamage),
+    vehiclePhotoSlots: [...APPRAISAL_PHOTO_SLOTS],
+    damagePhotoSlots: normalizeSlotList(body.damagePhotoSlots, APPRAISAL_DAMAGE_SLOTS),
+  };
+  fs.writeFileSync(file, `${JSON.stringify(payload, null, 2)}\n`, 'utf8');
+  return payload;
+}
+
+function slotsEnvFromCheckboxes(arr, order, envKey) {
+  const unique = normalizeSlotList(arr, order);
+  return { [envKey]: unique.join(',') };
+}
+
+/**
+ * Checked dashboard boxes → APPRAISEE_VEHICLE_SLOTS (non-success scripts: omit = no override).
+ */
+function photoSlotsEnv(photoSlots) {
+  if (!Array.isArray(photoSlots) || photoSlots.length === 0) return {};
+  return slotsEnvFromCheckboxes(photoSlots, APPRAISAL_PHOTO_SLOTS, 'APPRAISEE_VEHICLE_SLOTS');
+}
+
+function damageSlotsEnv(damagePhotoSlots) {
+  if (!Array.isArray(damagePhotoSlots) || damagePhotoSlots.length === 0) return {};
+  return slotsEnvFromCheckboxes(
+    damagePhotoSlots,
+    APPRAISAL_DAMAGE_SLOTS,
+    'APPRAISEE_DAMAGE_SLOTS'
+  );
+}
+
+/**
+ * Control Desk options for test:ios:appraisal:success only.
+ * Step 3 damage slots from checkboxes; step 4 vehicle photos are always all 6 in the test.
+ */
+function appraisalSuccessRunEnv(body) {
+  return {
+    ...slotsEnvFromCheckboxes(
+      body.damagePhotoSlots,
+      APPRAISAL_DAMAGE_SLOTS,
+      'APPRAISEE_DAMAGE_SLOTS'
+    ),
+    APPRAISEE_TYRE_DAMAGE: body.tyreDamage ? 'true' : 'false',
+    APPRAISEE_ALLOY_DAMAGE: body.alloyDamage ? 'true' : 'false',
+    APPRAISEE_CONTROL_DESK: '1',
+  };
+}
+
+function enqueueOrRun(projectId, script, extraEnv = {}, controlDeskBody = null) {
   if (!isRealProject(projectId)) {
     return { ok: false, error: `Unknown project: ${projectId}` };
   }
@@ -814,7 +913,7 @@ function enqueueOrRun(projectId, script) {
   if (!found) return { ok: false, error: `Unknown script: ${script}` };
 
   if (activeRun && activeRun.status === 'running') {
-    runQueue.push({ projectId, script });
+    runQueue.push({ projectId, script, env: extraEnv, controlDeskBody });
     return {
       ok: true,
       queued: true,
@@ -823,12 +922,34 @@ function enqueueOrRun(projectId, script) {
       run: publicRun(),
     };
   }
-  return beginScriptRun(projectId, script);
+  return beginScriptRun(projectId, script, { env: extraEnv, controlDeskBody });
+}
+
+function controlDeskBodyFromEnv(extraEnv) {
+  if (extraEnv.APPRAISEE_CONTROL_DESK !== '1') return null;
+  return {
+    tyreDamage: extraEnv.APPRAISEE_TYRE_DAMAGE === 'true',
+    alloyDamage: extraEnv.APPRAISEE_ALLOY_DAMAGE === 'true',
+    damagePhotoSlots: String(extraEnv.APPRAISEE_DAMAGE_SLOTS || '')
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean),
+  };
 }
 
 function beginScriptRun(projectId, script, opts = {}) {
   const runId = `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
   const cwd = path.join(PROJECTS_DIR, projectId);
+  const extraEnv = opts.env && typeof opts.env === 'object' ? opts.env : {};
+  let deskPayload = null;
+  if (script === 'test:ios:appraisal:success') {
+    const body =
+      opts.controlDeskBody ||
+      controlDeskBodyFromEnv(extraEnv);
+    if (body) {
+      deskPayload = writeControlDeskAppraisalRun(projectId, body);
+    }
+  }
   activeRun = {
     id: runId,
     projectId,
@@ -846,10 +967,35 @@ function beginScriptRun(projectId, script, opts = {}) {
     reports: [],
     summary: null,
   };
+  if (deskPayload) {
+    activeRun.lines.push(
+      `Control Desk: damage [${deskPayload.damagePhotoSlots.join(', ') || 'none'}] · vehicle [all 6 sides — automation]`
+    );
+  } else if (script === 'test:ios:appraisal:success') {
+    activeRun.lines.push(
+      'Control Desk: no photo options — using test defaults (all slots). Run from the success row Run button or restart Control Desk.'
+    );
+  }
 
+  if (extraEnv.APPRAISEE_DAMAGE_SLOTS !== undefined) {
+    activeRun.lines.push(
+      extraEnv.APPRAISEE_DAMAGE_SLOTS
+        ? `damage photos: ${extraEnv.APPRAISEE_DAMAGE_SLOTS}`
+        : 'damage photos: (none — no checkboxes selected)'
+    );
+  }
+  if (script === 'test:ios:appraisal:success') {
+    activeRun.lines.push('vehicle photos: all 6 sides (fixed in automation)');
+  }
+  if (extraEnv.APPRAISEE_TYRE_DAMAGE !== undefined) {
+    activeRun.lines.push(`tyres damage: ${extraEnv.APPRAISEE_TYRE_DAMAGE}`);
+  }
+  if (extraEnv.APPRAISEE_ALLOY_DAMAGE !== undefined) {
+    activeRun.lines.push(`alloys damage: ${extraEnv.APPRAISEE_ALLOY_DAMAGE}`);
+  }
   runChild = spawn('npm', ['run', script], {
     cwd,
-    env: { ...process.env, FORCE_COLOR: '0' },
+    env: { ...process.env, FORCE_COLOR: '0', ...extraEnv },
     shell: false,
     // New process group so Stop can kill npm + WDIO children together
     detached: process.platform !== 'win32',
@@ -888,12 +1034,40 @@ function beginScriptRun(projectId, script, opts = {}) {
   return { ok: true, queued: false, run: publicRun(), queue: runQueue.slice() };
 }
 
+/**
+ * Queue items may be script names or `{ script, tyreDamage, photoSlots, … }`
+ * for test:ios:appraisal:success checkbox options.
+ */
+function normalizeQueuedScript(entry) {
+  if (typeof entry === 'string') {
+    return { script: entry, env: {}, controlDeskBody: null };
+  }
+  if (!entry || typeof entry !== 'object') {
+    return { script: '', env: {}, controlDeskBody: null };
+  }
+  const script = String(entry.script || entry.name || '').trim();
+  if (script === 'test:ios:appraisal:success') {
+    return {
+      script,
+      env: appraisalSuccessRunEnv(entry),
+      controlDeskBody: entry,
+    };
+  }
+  return {
+    script,
+    env: photoSlotsEnv(entry.photoSlots),
+    controlDeskBody: null,
+  };
+}
+
 function enqueueMany(projectId, scripts) {
-  const list = (scripts || []).filter(Boolean);
+  const list = (scripts || []).filter(Boolean).map(normalizeQueuedScript).filter((x) => x.script);
   if (!list.length) return { ok: false, error: 'No scripts provided' };
   const results = [];
-  for (const script of list) {
-    results.push(enqueueOrRun(projectId, script));
+  for (const item of list) {
+    results.push(
+      enqueueOrRun(projectId, item.script, item.env, item.controlDeskBody)
+    );
   }
   return {
     ok: results.every((r) => r.ok),
@@ -1329,10 +1503,8 @@ const server = http.createServer(async (req, res) => {
 
     if (method === 'POST' && pathname === '/api/run') {
       const body = await readBody(req);
-      return json(
-        res,
-        enqueueOrRun(String(body.projectId || ''), String(body.script || ''))
-      );
+      const script = String(body.script || '');
+      return json(res, enqueueOrRun(String(body.projectId || ''), script));
     }
 
     if (method === 'POST' && pathname === '/api/run/many') {

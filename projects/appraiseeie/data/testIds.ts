@@ -40,6 +40,25 @@ export const TEST_IDS = {
     table: 'side_menu_table',
     logout: 'side_menu_logout',
     createAppraisal: 'side_menu_item_0',
+    /** Row 1 — APPRAISALS HISTORY → HistoryViewController */
+    appraisalsHistory: 'side_menu_item_1',
+  },
+  /**
+   * HistoryViewController — appraisal list after APPRAISALS HISTORY.
+   * Managers also see My Appraisals / All Appraisals. Sales people do not.
+   */
+  history: {
+    screen: 'home_screen',
+    menuButton: 'home_menu_button',
+  },
+  /** TradeDetailVC — opened by tapping a history card */
+  tradeDetail: {
+    screen: 'trade_detail_screen',
+    back: 'trade_detail_back',
+    tabRequired: 'trade_detail_tab_required',
+    tabTradeIn: 'trade_detail_tab_trade_in',
+    tabDamage: 'trade_detail_tab_damage',
+    tabPhotos: 'trade_detail_tab_photos',
   },
   /** TradeIn — Create Appraisal wizard */
   tradeIn: {

@@ -12,7 +12,6 @@ import { TEST_IDS } from '../data/testIds';
 import { appraisalData } from '../data/appraisalData';
 import { clientLog } from '../helpers/clientLog';
 import {
-  pickFirstLibraryPhoto,
   pickLibraryPhotoAtIndex,
   type DamageType,
 } from '../helpers/iosPhotos';
@@ -630,9 +629,20 @@ export class CreateAppraisalPage {
 
   /**
    * Tyre / alloy OK vs DAMAGE from env (APPRAISEE_TYRE_DAMAGE / APPRAISEE_ALLOY_DAMAGE).
-   * When tyre is DAMAGE, upload 4 tyre photos.
+   *
+   * Either DAMAGE toggle enables the photo strip (TradeIn.mm
+   * btnTyresOkDamageClicked / btnAlloysOkDamageClicked). On iPhone that strip
+   * is one horizontal collection, `collTyre`, with the five captions in
+   * `arrLblTyreAlloysImgType`. Each selected DAMAGE side gets a gallery photo
+   * on every slot: DRIVER FRONT, DRIVER REAR, PASSENGER FRONT, PASSENGER REAR,
+   * EXTRA. iPad has a second alloy collection; it is filled only when Alloys
+   * is DAMAGE and that collection is actually on screen.
    */
-  async completeDamageStep(tyreDamage: boolean, alloyDamage: boolean): Promise<void> {
+  async completeDamageStep(
+    tyreDamage: boolean,
+    alloyDamage: boolean,
+    damagePhotoSlots?: readonly string[]
+  ): Promise<void> {
     await this.waitForDamageStep();
     clientLog(
       `Tyres: ${tyreDamage ? 'DAMAGE' : 'OK'} · Alloys: ${alloyDamage ? 'DAMAGE' : 'OK'}`
@@ -640,9 +650,6 @@ export class CreateAppraisalPage {
 
     if (tyreDamage) {
       await this.tapSegment(TEST_IDS.tradeIn.tyreDamage, 'DAMAGE');
-      if (!appraisalData.skipPhotos) {
-        await this.addPhotosForLabels([...appraisalData.tyrePhotoSlots]);
-      }
     } else {
       await this.tapSegment(TEST_IDS.tradeIn.tyreOk, 'OK');
     }
@@ -651,6 +658,29 @@ export class CreateAppraisalPage {
       await this.tapSegment(TEST_IDS.tradeIn.alloyDamage, 'DAMAGE');
     } else {
       await this.tapSegment(TEST_IDS.tradeIn.alloyOk, 'OK');
+    }
+
+    if (!appraisalData.skipPhotos && (tyreDamage || alloyDamage)) {
+      const slots = [
+        ...(damagePhotoSlots ??
+          appraisalData.damagePhotoSlotsFor(tyreDamage, alloyDamage)),
+      ];
+      clientLog(
+        `Step 3 gallery: ${slots.length} damage slot(s) — ${slots.join(', ') || '(none)'}`
+      );
+      if (slots.length === 0) {
+        clientLog('No damage photo slots selected — skipping step 3 gallery picks');
+      } else {
+      // iPhone: both toggles share collTyre, so one pass covers Tyres and Alloys.
+      // iPad: collAlloys is a separate strip and is filled on its own.
+      const alloyGridSeparate = alloyDamage && (await this.isCollectionOnScreen(TEST_IDS.tradeIn.alloyPhotos));
+      if (tyreDamage || !alloyGridSeparate) {
+        await this.addDamagePhotosFromGallery(TEST_IDS.tradeIn.tyrePhotos, 'tyre', slots);
+      }
+      if (alloyGridSeparate) {
+        await this.addDamagePhotosFromGallery(TEST_IDS.tradeIn.alloyPhotos, 'alloy', slots);
+      }
+      }
     }
 
     await this.scrollDown(4);
@@ -709,7 +739,11 @@ export class CreateAppraisalPage {
   async completePhotosStep(labels: readonly string[]): Promise<void> {
     await this.waitForPhotosStep();
     if (!appraisalData.skipPhotos) {
-      await this.addVehiclePhotosForSlots(labels);
+      if (labels.length === 0) {
+        clientLog('No vehicle photo slots selected — skipping step 4 gallery picks');
+      } else {
+        await this.addVehiclePhotosForSlots(labels);
+      }
     } else {
       clientLog('Skipping photo uploads (APPRAISEE_SKIP_PHOTOS)');
     }
@@ -798,8 +832,8 @@ export class CreateAppraisalPage {
    * accessible (tradein_vehicle_photo_front / _driver_front / …) and reports
    * accessibilityValue "empty"/"filled", so this both targets the exact
    * placeholder and verifies the picked image actually landed in it —
-   * instead of the label-text search addPhotosForLabels uses for the Damage
-   * step's tyre/alloy photos (a different collection view, left unchanged).
+   * instead of the caption search addDamagePhotosFromGallery uses for the
+   * Damage step's tyre/alloy strip (a different, horizontal collection).
    *
    * `damageSlotIndices` marks one damage circle on those slots (0-based,
    * default FRONT + REAR — the two most reliable slots) via EditImageVC's
@@ -811,8 +845,12 @@ export class CreateAppraisalPage {
   ): Promise<void> {
     for (let i = 0; i < labels.length; i++) {
       const label = labels[i];
+      const gridIndex = appraisalData.vehiclePhotoSlots.indexOf(
+        label as (typeof appraisalData.vehiclePhotoSlots)[number]
+      );
+      const photoIndex = gridIndex >= 0 ? gridIndex : i;
       const idSelector = this.id(this.vehiclePhotoSlotId(label));
-      const markDamage = damageSlotIndices.includes(i);
+      const markDamage = damageSlotIndices.includes(photoIndex);
       clientLog(`Adding vehicle photo: ${label}${markDamage ? ' (with damage marker)' : ''}`);
 
       let cell;
@@ -837,7 +875,7 @@ export class CreateAppraisalPage {
         /* action sheet not shown — picker may already be open */
       }
 
-      const picked = await pickLibraryPhotoAtIndex(i, { markDamage });
+      const picked = await pickLibraryPhotoAtIndex(photoIndex, { markDamage });
       if (!picked) {
         clientLog(`Could not select a photo for ${label}`);
         // pickLibraryPhotoAtIndex already tried to recover, but confirm
@@ -1020,18 +1058,236 @@ export class CreateAppraisalPage {
   }
 
   /**
-   * For each label (FRONT, DRIVER FRONT, …) tap nearby ADD and pick a library photo.
+   * `"DRIVER FRONT"` → `"tradein_tyre_photo_driver_front"` (or alloy).
+   * Matches the identifier cellForItemAtIndexPath assigns on the damage strip.
+   * Until the app is rebuilt with those ids, the caption fallback below still
+   * finds the same slot by its exact label.
    */
-  async addPhotosForLabels(labels: string[]): Promise<void> {
-    for (const label of labels) {
-      clientLog(`Adding photo: ${label}`);
-      await this.scrollUntilLabelVisible(label).catch(() => undefined);
-      const tapped = await this.tapAddNearLabel(label);
-      if (tapped) {
-        await pickFirstLibraryPhoto();
-        await browser.pause(350);
-      } else {
-        clientLog(`ADD control not found for ${label} — skipping`);
+  private damagePhotoSlotId(kind: 'tyre' | 'alloy', label: string): string {
+    const safe = label.trim().toLowerCase().replace(/\s+/g, '_');
+    return `tradein_${kind}_photo_${safe}`;
+  }
+
+  /** True when that collection view is in the hierarchy and on screen. */
+  private async isCollectionOnScreen(collectionId: string): Promise<boolean> {
+    try {
+      const el = await $(this.id(collectionId));
+      return (
+        (await el.isExisting().catch(() => false)) &&
+        (await el.isDisplayed().catch(() => false))
+      );
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * TradeIn.mm lays the damage boxes out horizontally at 70×100 with the
+   * flow layout's default 10pt line spacing. Order matches
+   * arrLblTyreAlloysImgType: index 0 is DRIVER FRONT, index 4 is EXTRA.
+   */
+  private static readonly DAMAGE_BOX_WIDTH = 70;
+  private static readonly DAMAGE_BOX_STRIDE = 80;
+
+  /**
+   * Add a gallery photo to every box on the damage strip.
+   *
+   * The collection is one accessibility element, so the captions inside it
+   * report as not displayed and a label search only swipes the strip.
+   * Each box is opened with a coordinate tap on its photo, then Gallery.
+   * On EditImageVC the same damage control as Vehicle Photos places one
+   * circle (SCRATCH) before SAVE.
+   */
+  private damageStripIndexForLabel(label: string): number {
+    const idx = appraisalData.damagePhotoSlots.indexOf(
+      label as (typeof appraisalData.damagePhotoSlots)[number]
+    );
+    return idx >= 0 ? idx : 0;
+  }
+
+  private async addDamagePhotosFromGallery(
+    collectionId: string,
+    kind: 'tyre' | 'alloy',
+    labels: readonly string[]
+  ): Promise<void> {
+    clientLog(`Adding ${kind} damage photos from gallery (${labels.length} selected: ${labels.join(', ')})`);
+    this.damageStripShift = 0;
+    const visible = await this.scrollUntilDisplayed([this.id(collectionId)], 4);
+    if (!visible) {
+      clientLog(`${kind} photo strip not on screen — skipping damage photos`);
+      return;
+    }
+
+    for (let i = 0; i < labels.length; i++) {
+      const label = labels[i];
+      const stripIndex = this.damageStripIndexForLabel(label);
+      clientLog(`Adding ${kind} damage photo: ${label} (strip #${stripIndex + 1}, damage circle)`);
+
+      this.damageStripShift = 0;
+      const opened = await this.openDamagePhotoBox(
+        collectionId,
+        kind,
+        label,
+        stripIndex
+      );
+      if (!opened) {
+        clientLog(`Could not open ${kind} box: ${label} — skipping`);
+        continue;
+      }
+
+      const picked = await pickLibraryPhotoAtIndex(stripIndex, { markDamage: true });
+      if (!picked) {
+        clientLog(`Could not select a gallery photo for ${label}`);
+        await this.dismissPhotoPickerIfOpen();
+        continue;
+      }
+      clientLog(`Gallery photo added for ${label}`);
+      await browser.pause(400);
+    }
+  }
+
+  /**
+   * Tap one damage box so Camera / Gallery appears, then choose Gallery.
+   * Tries the per-box accessibility id first (after an app rebuild), then
+   * the box's fixed position in the horizontal strip.
+   */
+  private async openDamagePhotoBox(
+    collectionId: string,
+    kind: 'tyre' | 'alloy',
+    label: string,
+    index: number
+  ): Promise<boolean> {
+    const idSelector = this.id(this.damagePhotoSlotId(kind, label));
+    try {
+      const byId = await $(idSelector);
+      if (await byId.isDisplayed().catch(() => false)) {
+        await byId.click();
+        await browser.pause(400);
+        if (await this.chooseGallerySource()) return true;
+      }
+    } catch {
+      /* id is not in the installed build */
+    }
+
+    const collection = await $(this.id(collectionId));
+    const tapped = await this.tapDamageBoxAtIndex(collection, index);
+    if (!tapped) return false;
+    return this.chooseGallerySource();
+  }
+
+  /**
+   * Touch the photo area of box `index`. Scrolls the strip just far enough
+   * for that box to sit on screen, and remembers how far it has moved so
+   * the next box is measured from the same origin.
+   */
+  private damageStripShift = 0;
+
+  private async tapDamageBoxAtIndex(
+    collection: WebdriverIO.Element,
+    index: number
+  ): Promise<boolean> {
+    try {
+      const loc = await collection.getLocation();
+      const size = await collection.getSize();
+      if (!size || size.width <= 0 || size.height <= 0) return false;
+
+      const left = Math.max(8, Math.round(loc.x));
+      const right = Math.round(loc.x + size.width - 16);
+      let x =
+        Math.round(loc.x) +
+        index * CreateAppraisalPage.DAMAGE_BOX_STRIDE +
+        CreateAppraisalPage.DAMAGE_BOX_WIDTH / 2 -
+        this.damageStripShift;
+
+      if (x > right) {
+        const delta = Math.round(x - (left + right) / 2);
+        await this.dragWithinStrip(collection, delta);
+        this.damageStripShift += delta;
+        x -= delta;
+      }
+
+      x = Math.min(Math.max(x, left), right);
+      // Cell is 100pt tall inside the strip; 50pt down is the photo, not the caption.
+      const y = Math.round(loc.y + Math.min(50, size.height / 2));
+      clientLog(`Tapping ${index + 1} damage box at ${x},${y}`);
+      await browser.execute('mobile: tap', { x, y });
+      await browser.pause(500);
+      return true;
+    } catch (err) {
+      clientLog(`Damage box tap failed: ${String(err)}`);
+      return false;
+    }
+  }
+
+  /** Drag left inside the strip by `delta` points. Does not page the wizard. */
+  private async dragWithinStrip(el: WebdriverIO.Element, delta: number): Promise<void> {
+    const loc = await el.getLocation();
+    const size = await el.getSize();
+    const y = Math.round(loc.y + Math.min(size.height, 70) / 2);
+    const fromX = Math.round(loc.x + size.width * 0.8);
+    const toX = Math.max(Math.round(loc.x + 12), fromX - delta);
+    await browser
+      .action('pointer', { parameters: { pointerType: 'touch' } })
+      .move({ duration: 0, x: fromX, y })
+      .down({ button: 0 })
+      .pause(40)
+      .move({ duration: 350, x: toX, y })
+      .up({ button: 0 })
+      .perform()
+      .catch(() => undefined);
+    await browser.releaseActions().catch(() => undefined);
+    await browser.pause(300);
+  }
+
+  /**
+   * Empty damage boxes show Cancel / Camera / Gallery (`takeVehiclePhoto:`).
+   * Gallery is what adds the photo. Returns false when that sheet never opened,
+   * so the caller does not pick a photo from the wrong screen.
+   */
+  private async chooseGallerySource(timeoutMs = 5000): Promise<boolean> {
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+      try {
+        const gallery = await $(
+          '-ios predicate string:label == "Gallery" OR name == "Gallery"'
+        );
+        if (await gallery.isDisplayed().catch(() => false)) {
+          await gallery.click();
+          clientLog('Gallery selected for damage photo');
+          await browser.pause(500);
+          return true;
+        }
+      } catch {
+        /* sheet still animating */
+      }
+      try {
+        const picker = await $(
+          '-ios class chain:**/XCUIElementTypeImage[`name == "PXGGridLayout-Info"`]'
+        );
+        if (await picker.isExisting().catch(() => false)) return true;
+      } catch {
+        /* not in the library yet */
+      }
+      await browser.pause(200);
+    }
+    clientLog('Gallery option did not appear for this damage box');
+    return false;
+  }
+
+  /** Close a photo picker that opened without a usable image. */
+  private async dismissPhotoPickerIfOpen(): Promise<void> {
+    for (const label of ['Cancel', 'Close']) {
+      try {
+        const btn = await $(
+          `-ios predicate string:label == "${label}" OR name == "${label}"`
+        );
+        if (await btn.isDisplayed().catch(() => false)) {
+          await btn.click();
+          await browser.pause(300);
+          return;
+        }
+      } catch {
+        /* next */
       }
     }
   }
@@ -1056,46 +1312,6 @@ export class CreateAppraisalPage {
         }
       }
       if (i < maxSwipes) await this.scrollDown(1);
-    }
-    return false;
-  }
-
-  private async scrollUntilLabelVisible(label: string, maxSwipes = 6): Promise<void> {
-    for (let i = 0; i < maxSwipes; i++) {
-      try {
-        const el = await $(
-          `-ios predicate string:label CONTAINS "${label}" OR name CONTAINS "${label}"`
-        );
-        if (await el.isDisplayed().catch(() => false)) return;
-      } catch {
-        /* swipe */
-      }
-      await this.scrollDown(1);
-    }
-  }
-
-  private async tapAddNearLabel(label: string): Promise<boolean> {
-    // Cell / button that includes ADD near the section label
-    const candidates = [
-      `-ios predicate string:label CONTAINS "${label}" AND (label CONTAINS "ADD" OR name CONTAINS "ADD")`,
-      `-ios class chain:**/XCUIElementTypeButton[\`label CONTAINS "ADD"\`]`,
-      '~+ ADD',
-      '~ADD',
-      '-ios predicate string:label == "+ ADD" OR label == "ADD" OR name == "ADD"',
-    ];
-    for (const sel of candidates) {
-      try {
-        const els = await $$(sel);
-        for (const el of els) {
-          if (await el.isDisplayed().catch(() => false)) {
-            await el.click();
-            await browser.pause(450);
-            return true;
-          }
-        }
-      } catch {
-        /* next */
-      }
     }
     return false;
   }

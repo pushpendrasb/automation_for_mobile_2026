@@ -665,7 +665,9 @@
       cb.type = 'checkbox';
       cb.className = 'script-check';
       cb.value = s.name;
-      cb.addEventListener('change', updateRunSelectedState);
+      cb.addEventListener('change', () => {
+        updateRunSelectedState();
+      });
       left.appendChild(cb);
     }
     const info = document.createElement('div');
@@ -1164,7 +1166,10 @@
     try {
       const result = await api('/api/run', {
         method: 'POST',
-        body: JSON.stringify({ projectId, script }),
+        body: JSON.stringify({
+          projectId,
+          script,
+        }),
       });
       if (!result.ok) {
         setRunAck({
@@ -1256,7 +1261,10 @@
     try {
       const result = await api('/api/run/many', {
         method: 'POST',
-        body: JSON.stringify({ projectId: selectedProjectId, scripts }),
+        body: JSON.stringify({
+          projectId: selectedProjectId,
+          scripts,
+        }),
       });
       if (!result.ok) {
         alert('Some scripts could not be queued');

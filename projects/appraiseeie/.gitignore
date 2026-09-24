@@ -1,5 +1,6 @@
 node_modules/
 .env
+.control-desk-appraisal-run.json
 reports/
 screenshots/
 .DS_Store

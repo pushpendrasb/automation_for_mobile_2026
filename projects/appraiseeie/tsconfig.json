@@ -23,6 +23,8 @@
   "include": [
     "tests/**/*.ts",
     "pages/**/*.ts",
+    "data/**/*.ts",
+    "helpers/**/*.ts",
     "catalog/**/*.ts"
   ],
   "exclude": [
