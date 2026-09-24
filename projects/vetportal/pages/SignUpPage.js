@@ -8,8 +8,22 @@ const { ui } = require('./ui');
 const LoginPage = require('./LoginPage');
 const { TEST_IDS } = require('../data/testIds');
 const { pickFromGallery, tapFirstShown } = require('../helpers/photos');
+const { step } = require('./clientLog');
 
 const IDS = TEST_IDS.signup;
+
+/** Plain field names for the Client log (values are never logged there). */
+const FIELD_LABELS = {
+  [IDS.firstName]: 'First name',
+  [IDS.middleName]: 'Middle name',
+  [IDS.lastName]: 'Last name',
+  [IDS.email]: 'Email',
+  [IDS.password]: 'Password',
+  [IDS.mobile]: 'Mobile number',
+  [IDS.qualification]: 'Qualification',
+  [IDS.vetRegNo]: 'Vet registration number',
+  [IDS.eircode]: 'Eircode',
+};
 
 /** iOS reports an empty TextField's placeholder as its value. */
 const PLACEHOLDERS = {
@@ -21,21 +35,26 @@ class SignUpPage {
   async openFromLogin() {
     await LoginPage.resetAppToLoginScreen();
     await ui.tapTestId(TEST_IDS.login.registerNow);
+    step('Register Now tapped');
     ui.resetLayoutCache();
     // Wait for the push animation to finish before the first tap.
     await ui.waitForStable(await ui.waitForTestId(IDS.profileImage, 15000));
+    step('Registration screen opened');
   }
 
   // ---------------------------------------------------------------- profile image
 
   async addProfileImageFromGallery() {
     await this.#openImageActionSheetAndChoose('Photos Library');
+    step('Profile photo button tapped — Photos Library chosen');
     await pickFromGallery();
+    step('Photo picked from the gallery');
 
     // The pencil badge renders as soon as the image is set; the S3 upload then
     // runs behind a modal loader that hides the form until it finishes.
     await ui.waitForTestId(IDS.editProfileImage, 30000);
     await ui.waitForTestId(IDS.firstName, 60000);
+    step('Profile photo uploaded');
   }
 
   /**
@@ -113,6 +132,7 @@ class SignUpPage {
       const ok = isSecret ? actual.length === expected.length : actual === expected;
       if (ok) {
         console.log(`[Registration] ${name}: "${isSecret ? '*'.repeat(expected.length) : expected}"`);
+        step(`${FIELD_LABELS[id] || name} ${expected ? 'entered' : 'cleared'}`);
         if (submit && !ui.isAndroid()) {
           await el.addValue('\n').catch(() => {});
         }
@@ -204,13 +224,16 @@ class SignUpPage {
    */
   async pickAddress(search, index) {
     await (await this.#reveal(IDS.pickAddress)).click();
+    step('Address map button tapped');
 
     const field = await ui.waitForTestId(TEST_IDS.placePicker.search, 15000);
     await field.setValue(search);
+    step('Address search entered');
 
     const row = await this.#waitForSuggestion(search, index);
     console.log(`[Registration] Address suggestion #${index + 1}: ${await row.getText().catch(() => '')}`);
     await row.click();
+    step(`Address suggestion #${index + 1} selected`);
 
     // Back on the form once the picker's search box is gone. (Not firstName:
     // the form stays scrolled to the address, so firstName is off-screen.)
@@ -227,6 +250,7 @@ class SignUpPage {
       },
       { timeout: 15000, interval: 500, timeoutMsg: 'Picked address did not appear on the form' },
     );
+    step('Address filled on the form');
     return address;
   }
 
@@ -285,6 +309,8 @@ class SignUpPage {
     if (!eircode) {
       await this.#type(IDS.eircode, fallback);
       eircode = fallback;
+    } else {
+      step('Eircode already filled from the address');
     }
     await this.#dismissKeyboard();
     return eircode;
@@ -298,6 +324,7 @@ class SignUpPage {
       await box.click();
       await browser.pause(200);
     }
+    step('Agreement and Terms checkboxes ticked');
   }
 
   async #dismissKeyboard() {
@@ -314,11 +341,13 @@ class SignUpPage {
       await eircode.addValue('\n').catch(() => {});
     }
     await browser.pause(300);
+    step('Keyboard hidden');
   }
 
   async tapRegisterNow() {
     await this.#dismissKeyboard();
     await ui.tapTestId(IDS.submit);
+    step('Register Now button tapped');
   }
 
   /**
@@ -343,13 +372,22 @@ class SignUpPage {
         { timeout, interval: 500 },
       )
       .catch(() => {});
+    step(
+      outcome.success
+        ? `Registration successful — "${successTitle}" shown`
+        : outcome.message
+          ? `App showed message: "${outcome.message}"`
+          : 'No result shown after Register Now',
+    );
     return outcome;
   }
 
   /** Success alert "Ok" → app goes back to Sign In. */
   async confirmSuccessAlert() {
     await ui.tapTestId(TEST_IDS.alert.ok);
+    step('Success alert OK tapped');
     await LoginPage.waitForLoginScreen(20000);
+    step('Back on the Sign In screen');
   }
 }
 

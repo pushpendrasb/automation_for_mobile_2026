@@ -80,6 +80,8 @@ const registrationData = {
   fallbackEircode: process.env.REG_EIRCODE || 'D01 F5P2',
 
   successTitle: 'You have successfully created your account',
+  /** Sign-in toast for a new account whose email link has not been clicked yet. */
+  verifyEmailToast: 'Please verify and login again',
 };
 
 /**

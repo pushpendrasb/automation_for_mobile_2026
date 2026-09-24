@@ -11,6 +11,7 @@
  */
 const project = require('../project.config');
 const { TEST_IDS } = require('../data/testIds');
+const { step } = require('./clientLog');
 
 class LoginPage {
   #isAndroid() {
@@ -94,8 +95,23 @@ class LoginPage {
     return this.#isTestIdShown(TEST_IDS.home.menu);
   }
 
+  /**
+   * iOS reports Subscribe Vets and its children as visible="false" even while
+   * the screen is up, so this checks that the element exists, not isDisplayed.
+   */
   async isSubscribeVetsVisible() {
-    return this.#isTestIdShown(TEST_IDS.subscribeVets.screen);
+    return Boolean(await this.#existingTestId(TEST_IDS.subscribeVets.screen));
+  }
+
+  /** First element with this testID that has a size, displayed or not; else null. */
+  async #existingTestId(id) {
+    for (const el of await $$(this.#testIdSelector(id)).catch(() => [])) {
+      const size = await el.getSize().catch(() => null);
+      if (size && size.width > 0 && size.height > 0) {
+        return el;
+      }
+    }
+    return null;
   }
 
   /** Logged in: Home (practice joined) or Subscribe Vets (no practice yet). */
@@ -115,9 +131,11 @@ class LoginPage {
 
   /**
    * Bring the app to a clean Sign In form.
-   * Already on Login → just clear fields. On Home → log out. Otherwise relaunch.
+   * Already on Login → just clear fields. On Home → log out. On Subscribe
+   * Vets → Skip Now to Home, then log out. Otherwise relaunch.
    */
   async resetAppToLoginScreen() {
+    step('Opening the Sign In screen');
     if (await this.isOnLoginScreen()) {
       await this.clearLoginFields();
       return;
@@ -140,14 +158,88 @@ class LoginPage {
         return;
       }
       if (await this.isSubscribeVetsVisible()) {
-        throw new Error(
-          'App is logged in on Subscribe Vets (account has not joined a practice) — ' +
-            'there is no logout there. Use an account that has joined a practice, or reinstall the app.',
-        );
+        await this.skipJoinPractice();
+        continue;
       }
       await browser.pause(500);
     }
     throw new Error('VetPortal Sign In screen did not appear. Check IOS_BUNDLE_ID / app install.');
+  }
+
+  /**
+   * Subscribe Vets ("Join Vet Practice", shown to a vet with no practice yet)
+   * has no logout, and the app reopens it on every launch while the account
+   * stays signed in. "Skip Now" opens Home, where the side menu can log out.
+   * The screen opens with a "Please join and connect…" popup (and after a
+   * sign-in, iOS may show "Save Password?") that blocks taps, and either can
+   * appear a moment after the screen — so close whatever is up, tap Skip Now,
+   * and repeat until Home opens.
+   */
+  async skipJoinPractice() {
+    const homeOpened = async () =>
+      (await this.#isTestIdShown(TEST_IDS.alert.cancel)) || (await this.#isTestIdShown(TEST_IDS.home.menu));
+    let opened = false;
+    for (let attempt = 0; attempt < 4 && !opened; attempt++) {
+      await this.dismissSavePasswordPrompt();
+      const popupOk = await this.#firstDisplayed(this.#testIdSelector(TEST_IDS.alert.ok));
+      if (popupOk) {
+        await popupOk.click();
+        step('Join Vet Practice popup closed (OK)');
+        await browser.pause(500);
+      }
+      const skip = await this.#existingTestId(TEST_IDS.subscribeVets.skip);
+      if (skip) {
+        // Reported as not visible (see isSubscribeVetsVisible), so tap its centre.
+        const { x, y } = await skip.getLocation();
+        const { width, height } = await skip.getSize();
+        await browser
+          .action('pointer', { parameters: { pointerType: 'touch' } })
+          .move({ x: Math.round(x + width / 2), y: Math.round(y + height / 2) })
+          .down()
+          .pause(80)
+          .up()
+          .perform();
+        step('Join Vet Practice: Skip Now tapped');
+      }
+      // Home opens with "unable to access certain app features… Join Practice / OK";
+      // it hides the menu until closed. Its OK button is alert.cancel.
+      opened = await browser
+        .waitUntil(homeOpened, { timeout: 6000, interval: 500 })
+        .catch(() => false);
+    }
+    if (!opened) {
+      throw new Error('Home did not open after Skip Now on Join Vet Practice');
+    }
+    await this.#dismissHomePopup();
+    await this.#waitForTestId(TEST_IDS.home.menu, 10000);
+    step('Home screen shown');
+  }
+
+  /**
+   * iOS "Save Password?" sheet (from the phone's Passwords settings, not the
+   * app) shows after a sign-in and blocks taps. Tap "Not Now" if it is up.
+   * @param {{ waitMs?: number }} [opts] waitMs: how long to wait for the sheet
+   *   to appear (it shows a moment after the app lands)
+   * @returns {Promise<boolean>} true when the sheet was closed
+   */
+  async dismissSavePasswordPrompt({ waitMs = 0 } = {}) {
+    if (this.#isAndroid()) {
+      return false;
+    }
+    const selector = '-ios predicate string:type == "XCUIElementTypeButton" AND label == "Not Now"';
+    let notNow = await this.#firstDisplayed(selector);
+    const deadline = Date.now() + waitMs;
+    while (!notNow && Date.now() < deadline) {
+      await browser.pause(500);
+      notNow = await this.#firstDisplayed(selector);
+    }
+    if (!notNow) {
+      return false;
+    }
+    await notNow.click();
+    step('iOS "Save Password?" — Not Now tapped');
+    await browser.pause(500);
+    return true;
   }
 
   /**
@@ -166,12 +258,14 @@ class LoginPage {
     while (Date.now() < deadline) {
       if (await this.isHomeVisible()) {
         console.log('[login] Already signed in — skipping login');
+        step('Already signed in — Home screen shown');
         await this.#dismissHomePopup();
         return;
       }
       if (await this.isOnLoginScreen()) {
         const { email, password } = credentials();
         console.log(`[login] Signed out — signing in as ${email} (.env)`);
+        step('Signed out — signing in with the saved account');
         await this.clearLoginFields();
         await this.enterEmail(email);
         await this.enterPassword(password);
@@ -199,11 +293,13 @@ class LoginPage {
     const popupCancel = await this.#firstDisplayed(this.#testIdSelector(TEST_IDS.alert.cancel));
     if (popupCancel) {
       await popupCancel.click();
+      step('Home popup closed');
       await browser.pause(400);
     }
   }
 
   async #relaunchApp() {
+    step('Restarting the app');
     const appId = this.#isAndroid()
       ? process.env.ANDROID_APP_PACKAGE || project.defaults.android.appPackage
       : process.env.IOS_BUNDLE_ID || project.defaults.ios.bundleId;
@@ -221,11 +317,15 @@ class LoginPage {
     const popupCancel = await this.#firstDisplayed(this.#testIdSelector(TEST_IDS.alert.cancel));
     if (popupCancel) {
       await popupCancel.click();
+      step('Home popup closed');
       await browser.pause(500);
     }
     await this.#tapTestId(TEST_IDS.home.menu);
+    step('Menu button tapped');
     await this.#tapTestId(TEST_IDS.menu.logout);
+    step('Logout tapped');
     await this.#tapTestId(TEST_IDS.alert.ok);
+    step('Logout confirmed');
   }
 
   // ---------------------------------------------------------------- form
@@ -237,17 +337,20 @@ class LoginPage {
         await el.clearValue().catch(() => {});
       }
     }
+    step('Email and password fields cleared');
     await this.#dismissKeyboard();
   }
 
   async enterEmail(email) {
     const el = await this.#waitForTestId(TEST_IDS.login.email);
     await el.setValue(email);
+    step(email ? 'Email entered' : 'Email left blank');
   }
 
   async enterPassword(password) {
     const el = await this.#waitForTestId(TEST_IDS.login.password);
     await el.setValue(password);
+    step(password ? 'Password entered' : 'Password left blank');
   }
 
   /**
@@ -274,11 +377,13 @@ class LoginPage {
       await pwd.addValue('\n').catch(() => {});
     }
     await browser.pause(300);
+    step('Keyboard hidden');
   }
 
   async tapSignIn() {
     await this.#dismissKeyboard();
     await this.#tapTestId(TEST_IDS.login.submit);
+    step('Sign In button tapped');
   }
 
   async assertLoginFormVisible() {
@@ -355,6 +460,16 @@ class LoginPage {
         { timeout, interval: 300 },
       )
       .catch(() => {});
+    step(
+      outcome.landed
+        ? 'Signed in — app moved past Sign In'
+        : outcome.message
+          ? `App showed message: "${outcome.message}"`
+          : 'No result shown after Sign In',
+    );
+    if (outcome.landed) {
+      await this.dismissSavePasswordPrompt({ waitMs: 3000 });
+    }
     return outcome;
   }
 
@@ -364,8 +479,11 @@ class LoginPage {
   async isLoginSuccessful(timeout = 25000) {
     try {
       await browser.waitUntil(() => this.isLandedAfterLogin(), { timeout, interval: 500 });
+      step('Signed in — Home screen shown');
+      await this.dismissSavePasswordPrompt({ waitMs: 3000 });
       return true;
     } catch {
+      step('Sign in did not reach the Home screen');
       return false;
     }
   }
@@ -385,6 +503,7 @@ class LoginPage {
       }
       stablePolls = (await this.isOnLoginScreen()) ? stablePolls + 1 : 0;
       if (Date.now() - start >= minSettleMs && stablePolls >= 3) {
+        step('Sign in rejected — still on the Sign In screen');
         return;
       }
       await browser.pause(500);

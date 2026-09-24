@@ -15,6 +15,7 @@
  */
 const { ui } = require('./ui');
 const { TEST_IDS } = require('../data/testIds');
+const { step } = require('./clientLog');
 
 const C = TEST_IDS.compose;
 
@@ -95,10 +96,14 @@ class ComposeScriptPage {
     ui.resetLayoutCache();
     if (!(await ui.isTestIdShown(TEST_IDS.myPrescriptions.compose))) {
       await ui.tapTestId(TEST_IDS.homeTile.myPrescriptions, 20000);
+      step('My Prescriptions tapped');
     }
     await ui.tapTestId(TEST_IDS.myPrescriptions.compose, 20000);
+    step('Compose New Script tapped');
     await ui.tapTestId(TEST_IDS.selectFormat[format]);
+    step(`Format selected: ${format === 'remedyStore' ? 'Animal Remedy Store' : 'Veterinary Practice'}`);
     await ui.waitForTestId(C.tab(1), 20000);
+    step('Compose New Script screen opened');
   }
 
   /**
@@ -109,6 +114,7 @@ class ComposeScriptPage {
     const deadline = Date.now() + 15000;
     while (Date.now() < deadline) {
       if (await ui.isTestIdShown(C.clientNameValue)) {
+        step('Client/Dispenser tab opened');
         return;
       }
       if (await ui.isTestIdShown(C.practiceName)) {
@@ -116,16 +122,20 @@ class ComposeScriptPage {
         // Practice list loads async; "Select" means not loaded yet.
         if (practice && !/^Select\b/.test(practice.trim())) {
           await ui.tapTestId(C.submit);
+          step('Vet Practice tab: Next tapped');
         }
       }
       await browser.pause(500);
     }
     await ui.waitForTestId(C.clientNameValue, 5000);
+    step('Client/Dispenser tab opened');
   }
 
   /** Bottom button: "Next" on tabs 1–2, "Compose and Dispense" on tab 3. */
   async tapSubmit() {
+    const label = (await this.#labelOf(C.submit)).trim();
     await ui.tapTestId(C.submit);
+    step(`${label || 'Next'} button tapped`);
   }
 
   // ---------------------------------------------------------------- tab 2
@@ -149,10 +159,14 @@ class ComposeScriptPage {
    */
   async #pickClient(name) {
     await this.#tapComposeField(C.clientNameValue);
+    step('Client Name field tapped');
     const search = await ui.waitForTestId(TEST_IDS.searchPopup.search, 15000);
+    step('Client search list opened');
     await ui.typeByKeys(search, name.trim().split(/\s+/)[0].toLowerCase(), { submit: true });
+    step('Client name typed in the search box');
     const selector = this.#rowSelector('searchPopup.row.', name, { beginsWith: true });
     await ui.waitFor(selector, 15000, `client "${name}" in the Client Name list`);
+    step(`Client "${name}" found in the list`);
     // Retry only if a tap is swallowed (e.g. keyboard still up); stop once the popup closes.
     for (let attempt = 0; attempt < 3; attempt++) {
       const row = await ui.firstDisplayed(selector);
@@ -175,6 +189,7 @@ class ComposeScriptPage {
       timeout: 8000,
       timeoutMsg: `Client Name did not show "${name}" after picking it`,
     });
+    step(`Client "${name}" selected`);
   }
 
   /**
@@ -199,9 +214,11 @@ class ComposeScriptPage {
       const name = await this.getClientName();
       if (!herdNo) {
         console.log(`[compose] Client without Herd No: "${name}"`);
+        step(`Client "${name}" selected (no Herd No on file)`);
         return name;
       }
       console.log(`[compose] Skipping "${name}" (Herd No: ${herdNo})`);
+      step(`Client "${name}" has a Herd No — trying the next client`);
     }
     throw new Error(`No client without a Herd No in the first ${maxClients} clients`);
   }
@@ -214,7 +231,9 @@ class ComposeScriptPage {
   /** Current Address field value ('' when empty). */
   async getAddress() {
     await ui.scrollToTestId(C.address, COMPOSE_AREA);
-    return this.#valueOf(C.address);
+    const address = await this.#valueOf(C.address);
+    step(address ? 'Address filled from the client' : 'Address is empty');
+    return address;
   }
 
   /**
@@ -226,8 +245,11 @@ class ComposeScriptPage {
     const el = await ui.scrollToTestId(C.address, COMPOSE_AREA);
     const before = await this.#valueOf(C.address);
     await el.addValue('x').catch(() => {});
+    step('Tried typing in the Address field');
     await ui.dismissKeyboard({ x: 10, y: (await ui.usableArea(COMPOSE_AREA)).top + 12 });
-    return (await this.#valueOf(C.address)) !== before;
+    const editable = (await this.#valueOf(C.address)) !== before;
+    step(editable ? 'Address field accepted typing' : 'Address field is read-only');
+    return editable;
   }
 
   /**
@@ -237,6 +259,7 @@ class ComposeScriptPage {
    */
   async selectAnimal(text) {
     await this.#tapComposeField(C.animalCategoryValue);
+    step('Animal Category/ Type tapped');
     await ui.waitForTestId(TEST_IDS.catPopup.row(0), 10000);
     const rows = await $$(this.#rowSelector('catPopup.row.', text));
     if (!rows.length) {
@@ -256,6 +279,7 @@ class ComposeScriptPage {
       timeout: 5000,
       timeoutMsg: 'Animal Category/ Type picker did not close',
     });
+    step(`Animal "${text}" selected`);
   }
 
   /**
@@ -316,10 +340,13 @@ class ComposeScriptPage {
    */
   async selectDispenser(name = '') {
     await this.#tapComposeField(C.dispenserNameValue);
+    step('Dispenser name field tapped');
     const search = await ui.waitForTestId(TEST_IDS.searchPopup.search, 15000);
+    step('Dispenser search list opened');
     let selector = ui.testIdSelector(TEST_IDS.searchPopup.row(0));
     if (name) {
       await search.setValue(name);
+      step('Dispenser name typed in the search box');
       selector = this.#rowSelector('searchPopup.row.', name);
     }
     await ui.waitFor(selector, 15000, name ? `dispenser "${name}" in the Dispenser Name list` : 'a dispenser in the list');
@@ -350,6 +377,7 @@ class ComposeScriptPage {
       { timeout: 8000, timeoutMsg: `Dispenser name did not show ${name ? `"${name}"` : 'a dispenser'} after picking it` },
     );
     console.log(`[compose] Dispenser: "${picked}"`);
+    step(`Dispenser "${picked}" selected`);
     return picked;
   }
 
@@ -378,6 +406,7 @@ class ComposeScriptPage {
     let branch = await this.getBranch();
     if (branch) {
       console.log(`[compose] Branch (only one, auto-selected): "${branch}"`);
+      step(`Branch "${branch}" selected automatically (only one)`);
       return branch;
     }
     if (/no branches/i.test(placeholder)) {
@@ -385,17 +414,20 @@ class ComposeScriptPage {
     }
 
     await this.#tapComposeField(C.branchValue);
+    step('Branch field tapped');
     await ui.waitForTestId(TEST_IDS.catPopup.row(0), 10000);
     const row = name
       ? await ui.waitFor(this.#rowSelector('catPopup.row.', name), 5000, `branch "${name}"`)
       : await ui.byTestId(TEST_IDS.catPopup.row(0));
     await row.click();
     await ui.tapTestId(TEST_IDS.catPopup.save);
+    step('Branch Save tapped');
     await browser.waitUntil(async () => Boolean((branch = await this.getBranch())), {
       timeout: 8000,
       timeoutMsg: 'Branch did not show a value after Save',
     });
     console.log(`[compose] Branch: "${branch}"`);
+    step(`Branch "${branch}" selected`);
     return branch;
   }
 
@@ -415,6 +447,7 @@ class ComposeScriptPage {
       timeout,
       timeoutMsg: 'Medicine tab (Add Medicine) did not open',
     });
+    step('Medicine tab opened');
   }
 
   /**
@@ -429,13 +462,17 @@ class ComposeScriptPage {
   async addMedicine({ search = '', quantity, animalId, fallbacks = {} }) {
     const index = (await $$('-ios predicate string:name BEGINSWITH "compose.medicine."')).length;
     await ui.tapTestId(index === 0 ? C.addMedicine : C.addMoreMedicine);
+    step(index === 0 ? 'Add Medicine tapped' : 'Add More Medicine tapped');
 
     const box = await ui.waitForTestId(TEST_IDS.compendium.search, 20000);
+    step('Drug Compendium opened');
     if (search) {
       // The compendium searches on Return / end editing, not while typing.
       await box.setValue(`${search}\n`);
+      step(`Drug search "${search}" entered`);
     }
     await ui.waitForTestId(TEST_IDS.compendium.row(0), 30000);
+    step('Drug list loaded');
     await browser.pause(500);
     const M = TEST_IDS.addMedicine;
     // The list can re-render as results arrive (stale element), and a tap that
@@ -455,15 +492,20 @@ class ComposeScriptPage {
       { timeout: 30000, interval: 1000, timeoutMsg: 'Could not open Add Medicine from the compendium' },
     );
     await ui.waitForTestId(M.productName, 20000);
+    step('First drug tapped — Add Medicine screen opened');
     ui.resetLayoutCache();
     await this.#fillEmptyMedicineFields({ quantity, ...fallbacks });
     await this.#typeInto(TEST_IDS.animalId.freeText, animalId, { coverIds: [M.submit] });
+    step('Animal ID entered');
     await ui.dismissKeyboard({ x: 10, y: 120 });
+    step('Keyboard hidden');
     // Practice details can still land late and blank a field — check once more.
     await this.#fillEmptyMedicineFields({ quantity, ...fallbacks }, { settle: false });
     await ui.tapTestId(M.submit);
+    step('Add button tapped');
 
     await ui.waitForTestId(C.medicine(index), 20000);
+    step(`Medicine #${index + 1} added to the script`);
     ui.resetLayoutCache();
   }
 
@@ -490,23 +532,36 @@ class ComposeScriptPage {
     console.log(
       `[compose] Add Medicine ${settle ? 'as opened' : 'before Add'}: ${JSON.stringify(current)}`,
     );
+    if (settle) {
+      step(
+        empty.length
+          ? `Medicine details checked — empty: ${empty.join(', ')}`
+          : 'Medicine details checked — all fields filled by the drug',
+      );
+    } else {
+      step(`Re-checked before Add — now empty: ${empty.join(', ')}`);
+    }
 
-    /** How to fill each field, in on-screen order. */
+    /** How to fill each field, in on-screen order; resolves to a Client-log line. */
+    const typed = async (id, value, field) => {
+      await this.#typeInto(id, value, MEDICINE_AREA);
+      return `${field} entered`;
+    };
     const fillers = {
       'Withdrawal Period': () =>
-        this.#pickOrType(M.withdrawalPeriodSelect, M.withdrawalPeriod, d.withdrawalPeriod),
+        this.#pickOrType(M.withdrawalPeriodSelect, M.withdrawalPeriod, d.withdrawalPeriod, 'Withdrawal Period'),
       'Withdrawal Notes': () =>
-        this.#pickOrType(M.withdrawalNotesSelect, M.withdrawalNotes, d.withdrawalNotes),
-      Qty: () => this.#typeInto(M.quantity, d.quantity, MEDICINE_AREA),
+        this.#pickOrType(M.withdrawalNotesSelect, M.withdrawalNotes, d.withdrawalNotes, 'Withdrawal Notes'),
+      Qty: () => typed(M.quantity, d.quantity, 'Qty'),
       Unit: () => this.#pickFirstFromList(M.unit, 'Unit'),
       Route: () => this.#pickFirstFromList(M.routeSelect, 'Route'),
-      Dosage: () => this.#typeInto(M.dosage, d.dosage, MEDICINE_AREA),
-      Recommendation: () => this.#typeInto(M.recommendation, d.recommendation, MEDICINE_AREA),
+      Dosage: () => typed(M.dosage, d.dosage, 'Dosage'),
+      Recommendation: () => typed(M.recommendation, d.recommendation, 'Recommendation'),
     };
     const filled = [];
     for (const [field, fill] of Object.entries(fillers)) {
       if (empty.includes(field)) {
-        await fill();
+        step(await fill());
         filled.push(field);
       }
     }
@@ -575,7 +630,8 @@ class ComposeScriptPage {
    * Single-choice list (Unit, Route): open it and tap the first row, which
    * closes the popup and sets the value.
    * @param {string} openerId testID that opens the CatPopup
-   * @param {string} what field name for errors
+   * @param {string} what field name for errors and the Client log
+   * @returns {Promise<string>} Client-log line describing what was done
    */
   async #pickFirstFromList(openerId, what) {
     await this.#tapMedicineControl(openerId);
@@ -586,13 +642,16 @@ class ComposeScriptPage {
     }
     await row.click();
     await this.#waitCatPopupClosed();
+    return `${what} selected from the list`;
   }
 
   /**
    * Multi-select list (Withdrawal Period / Notes): tick the first row and Save.
    * If the list has no rows, close it and type `text` into the field instead.
+   * @param {string} what field name for the Client log
+   * @returns {Promise<string>} Client-log line describing what was done
    */
-  async #pickOrType(selectId, fieldId, text) {
+  async #pickOrType(selectId, fieldId, text, what) {
     await this.#tapMedicineControl(selectId);
     const row = await ui.waitForTestId(TEST_IDS.catPopup.row(0), 5000).catch(() => null);
     if (row) {
@@ -600,13 +659,14 @@ class ComposeScriptPage {
       await ui.tapTestId(TEST_IDS.catPopup.save, 5000);
       await this.#waitCatPopupClosed();
       if (await this.#valueOf(fieldId)) {
-        return;
+        return `${what} selected from the list and saved`;
       }
     } else {
       await ui.tapTestId(TEST_IDS.catPopup.backdrop, 3000).catch(() => {});
       await this.#waitCatPopupClosed();
     }
     await this.#typeInto(fieldId, text, MEDICINE_AREA);
+    return `${what} entered`;
   }
 
   async #waitCatPopupClosed() {
@@ -642,9 +702,13 @@ class ComposeScriptPage {
     await this.tapSubmit();
     const S = TEST_IDS.signature;
     await ui.waitForTestId(S.confirm, 15000);
+    step('Signature screen opened');
     await this.#drawSignature();
+    step('Signature drawn');
     await ui.tapTestId(S.confirm);
+    step('Confirmation checkbox ticked');
     await ui.tapTestId(S.complete);
+    step('Complete Script Now tapped');
   }
 
   /** Zig-zag stroke across the signature pad. */
@@ -653,14 +717,14 @@ class ComposeScriptPage {
     const r = await ui.rectOf(pad);
     const y = r.y + r.height / 2;
     const x0 = r.x + r.width * 0.15;
-    const step = (r.width * 0.7) / 6;
+    const dx = (r.width * 0.7) / 6;
     let chain = browser
       .action('pointer', { parameters: { pointerType: 'touch' } })
       .move({ x: Math.round(x0), y: Math.round(y) })
       .down();
     for (let i = 1; i <= 6; i++) {
       const dy = i % 2 ? -r.height * 0.2 : r.height * 0.2;
-      chain = chain.move({ x: Math.round(x0 + step * i), y: Math.round(y + dy), duration: 120 });
+      chain = chain.move({ x: Math.round(x0 + dx * i), y: Math.round(y + dy), duration: 120 });
     }
     await chain.up().perform();
     await browser.pause(300);
@@ -676,7 +740,9 @@ class ComposeScriptPage {
     const rx = await ui.firstDisplayed(ui.containsTextSelector('RX NO:'));
     const rxText = rx ? String((await rx.getAttribute('label').catch(() => '')) || '') : '';
     const match = rxText.match(/RX NO:\s*([A-Za-z0-9-]+)/);
+    step(`Success alert shown: "${message}"${match ? ` — RX NO: ${match[1]}` : ''}`);
     await ui.tapTestId(TEST_IDS.alert.ok);
+    step('Success alert OK tapped');
     return match ? match[1] : null;
   }
 
@@ -697,6 +763,7 @@ class ComposeScriptPage {
       interval: 150,
       timeoutMsg: `Expected toast containing: ${text}`,
     });
+    step(`App showed message: "${text}"`);
   }
 
   // ---------------------------------------------------------------- exit
@@ -716,6 +783,7 @@ class ComposeScriptPage {
       await ui.tapTestId(C.back);
       await browser.pause(600);
     }
+    step('Left Compose New Script');
   }
 }
 

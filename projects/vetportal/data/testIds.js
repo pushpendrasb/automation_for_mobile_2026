@@ -35,6 +35,8 @@ const TEST_IDS = {
   },
   subscribeVets: {
     screen: 'subscribeVets.screen',
+    /** "Skip Now" — opens Home, which has the side-menu Logout. */
+    skip: 'subscribeVets.skip',
   },
   menu: {
     item: id => `menu.item.${id}`,
