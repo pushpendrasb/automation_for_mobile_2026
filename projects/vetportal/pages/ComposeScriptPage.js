@@ -501,6 +501,9 @@ class ComposeScriptPage {
     step('Keyboard hidden');
     // Practice details can still land late and blank a field — check once more.
     await this.#fillEmptyMedicineFields({ quantity, ...fallbacks }, { settle: false });
+    // Re-fill can focus Dosage / Recommendation and leave the keyboard up; Add sits
+    // in the fixed footer behind it and isDisplayed() stays false until dismissed.
+    await ui.dismissKeyboard({ x: 10, y: 120 });
     await ui.tapTestId(M.submit);
     step('Add button tapped');
 
