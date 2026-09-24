@@ -5,12 +5,14 @@
  * (hero + gauge, module bars, expandable step trails, iPhone screenshot
  * frame, pass-rate trend, device matrix). Content is filled from the
  * live WebdriverIO run — never from sample/demo numbers.
- * Client branding (App Design) comes from reportBrand.js; REPORT_BRAND=off disables it.
+ * With App Design branding on (reportBrand.js) the layout comes from
+ * brandedReport.js; REPORT_BRAND=off renders the plain layout below.
  */
 
 const fs = require('fs');
 const path = require('path');
 const { reportBrand, strongReportBrandCss, brandBarHtml, brandFootHtml } = require('./reportBrand');
+const { buildBrandedHtml } = require('./brandedReport');
 
 /**
  * Escape text for safe HTML interpolation.
@@ -620,6 +622,20 @@ function reportCss() {
 function buildStrongHtml(payload, opts = {}) {
   const displayName = opts.displayName || payload.title || 'Mobile App';
   const brand = reportBrand();
+  if (brand) {
+    // App Design layout (brandedReport.js); REPORT_BRAND=off falls through to the plain one.
+    return buildBrandedHtml(payload, { displayName }, brand, {
+      escapeHtml,
+      formatDuration,
+      formatIst,
+      moduleStats,
+      sortByCatalog,
+      stepItems,
+      screenshotSrc,
+      failureKind,
+      BADGE_LABEL,
+    });
+  }
   const plat = payload.platform || {};
   const summary = payload.summary || {};
   const tests = payload.tests || [];
