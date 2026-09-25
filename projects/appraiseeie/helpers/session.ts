@@ -7,6 +7,7 @@ import HomePage from '../pages/HomePage';
 import SystemAlertsPage from '../pages/SystemAlertsPage';
 import { assertCredentialsConfigured, testData } from '../data/testData';
 import { clientLog } from './clientLog';
+import { byExactText } from './platform';
 
 /**
  * Bring the app to the ViewController login form.
@@ -41,9 +42,7 @@ export async function ensureLoggedOut(): Promise<void> {
         const byName = await $('~Logout');
         await byName.click();
       }
-      const yes = await $(
-        '-ios predicate string:label == "YES" OR name == "YES"'
-      );
+      const yes = await $(byExactText('YES'));
       await yes.waitForDisplayed({ timeout: 8000 });
       await yes.click();
       clientLog('Logged out from role picker');

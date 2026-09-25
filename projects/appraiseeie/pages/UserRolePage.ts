@@ -6,6 +6,7 @@
  */
 import { TEST_IDS, userRoleCellId } from '../data/testIds';
 import { clientLog } from '../helpers/clientLog';
+import { byTextContains, forPlatform } from '../helpers/platform';
 import SystemAlertsPage from './SystemAlertsPage';
 
 export class UserRolePage {
@@ -14,13 +15,16 @@ export class UserRolePage {
   }
 
   private screenSelectors(): string[] {
-    return [
+    return forPlatform([
       this.id(TEST_IDS.userRole.screen),
       this.id(TEST_IDS.userRole.logout),
+      'android=new UiSelector().description("login_user_role_screen")',
       '~Logout',
+      byTextContains('choose one of the below accounts'),
+      byTextContains('Hi there'),
       '-ios predicate string:label CONTAINS[c] "choose one of the below accounts"',
       '-ios predicate string:label CONTAINS[c] "Hi there"',
-    ];
+    ]);
   }
 
   private tableSelectors(): string[] {

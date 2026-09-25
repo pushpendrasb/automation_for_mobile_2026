@@ -8,6 +8,7 @@
  */
 import { TEST_IDS } from '../data/testIds';
 import { clientLog } from '../helpers/clientLog';
+import { byTextContains, forPlatform } from '../helpers/platform';
 import SideMenuPage from './SideMenuPage';
 
 export class HomePage {
@@ -16,13 +17,16 @@ export class HomePage {
   }
 
   private homeSelectors(): string[] {
-    return [
+    return forPlatform([
       this.id(TEST_IDS.home.screen),
       this.id(TEST_IDS.home.menuButton),
+      'android=new UiSelector().description("home_screen")',
+      'android=new UiSelector().description("home_menu_button")',
+      byTextContains('historical appraisal'),
       '-ios class chain:**/XCUIElementTypeSearchField',
       '-ios predicate string:type == "XCUIElementTypeSearchField"',
       '-ios predicate string:label CONTAINS[c] "historical appraisal"',
-    ];
+    ]);
   }
 
   private menuSelectors(): string[] {

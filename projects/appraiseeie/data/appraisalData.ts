@@ -3,7 +3,8 @@
  *
  * Step 3: APPRAISEE_TYRE_DAMAGE / APPRAISEE_ALLOY_DAMAGE (default tyres DAMAGE).
  *         When either is DAMAGE, the test fills all five damage strip slots.
- * Step 4: Always all six vehicle sides.
+ * Step 4: Vehicle photo count follows the grid the app built from
+ *         app_images_mandatory (countTotalImages in TradeIn.mm): 6 or 9 cells.
  *
  * Optional: APPRAISEE_SKIP_PHOTOS=true (debug).
  */
@@ -55,7 +56,10 @@ export const appraisalData = {
     "EXTRA",
   ] as const,
 
-  /** All vehicle grid sides (step 4). */
+  /**
+   * The six labelled sides (arrLblImgType). When app_images_mandatory is 9,
+   * TradeIn adds three more cells, all captioned EXTRA.
+   */
   get selectedVehiclePhotoSlots(): string[] {
     return [...this.vehiclePhotoSlots];
   },

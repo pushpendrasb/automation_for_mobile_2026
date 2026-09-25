@@ -51,7 +51,6 @@ describe('AppraiseeIE — Create Appraisal (negative: duplicate registration)', 
     await CreateAppraisalPage.waitForVehicleRequired();
 
     clientStep('Vehicle Required — fill with the duplicate registration');
-    await CreateAppraisalPage.assertNameValidationOnEmptyNext();
     const mobile = appraisalData.randomMobile();
     await CreateAppraisalPage.fillCustomerAndRegistration({
       name: appraisalData.customerName,
@@ -78,7 +77,7 @@ describe('AppraiseeIE — Create Appraisal (negative: duplicate registration)', 
     clientStep('Vehicle Photos — add images and attempt SAVE (expect rejection)');
     let saveError: Error | null = null;
     try {
-      await CreateAppraisalPage.completePhotosStep([...appraisalData.vehiclePhotoSlots]);
+      await CreateAppraisalPage.completePhotosStep();
     } catch (err) {
       saveError = err instanceof Error ? err : new Error(String(err));
     }

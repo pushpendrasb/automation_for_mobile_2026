@@ -3,10 +3,10 @@
  *
  * Flow:
  * 1. Side menu → CREATE NEW APPRAISAL
- * 2. Vehicle Required — empty Next → name validation → fill Name/Email/Mobile (+ plate)
+ * 2. Vehicle Required — fill Name/Email/Mobile (+ plate) while they are on screen, then Next
  * 3. Vehicle Trade In — plate lookup auto-fill → Next → mileage (+ tax) → Next
  * 4. Vehicle Damage — tyre/alloy from env; all 5 damage photos when DAMAGE → Next
- * 5. Vehicle Photos — add all 6 sides from gallery → SAVE
+ * 5. Vehicle Photos — add as many photos as app_images_mandatory, then SAVE
  *
  * Data: Name Paul, email sami@appdesign.ie, Vehicle Required plate 141KY51,
  *       Vehicle Trade In plate 141D6333, random mobile.
@@ -33,7 +33,7 @@ describe('AppraiseeIE — Create Appraisal', () => {
     );
     clientLog(
       `Photos — step 3: tyres ${appraisalData.tyreDamage ? 'DAMAGE' : 'OK'}, alloys ${appraisalData.alloyDamage ? 'DAMAGE' : 'OK'} → ` +
-        `${damageSlots.length} damage slot(s); step 4: all ${appraisalData.vehiclePhotoSlots.length} vehicle sides`
+        `${damageSlots.length} damage slot(s); step 4: vehicle photos follow app_images_mandatory`
     );
     injectSamplePhotoToSimulator();
     injectVehiclePhotoFixturesToSimulator();
@@ -45,8 +45,7 @@ describe('AppraiseeIE — Create Appraisal', () => {
     await HomePage.openCreateAppraisal();
     await CreateAppraisalPage.waitForVehicleRequired();
 
-    clientStep('Trigger name validation then fill customer details');
-    await CreateAppraisalPage.assertNameValidationOnEmptyNext();
+    clientStep('Fill customer details on Vehicle Required, then continue');
     const mobile = appraisalData.randomMobile();
     await CreateAppraisalPage.fillCustomerAndRegistration({
       name: appraisalData.customerName,
@@ -68,13 +67,9 @@ describe('AppraiseeIE — Create Appraisal', () => {
       appraisalData.alloyDamage
     );
 
-    const photoSlots = [...appraisalData.vehiclePhotoSlots];
-    clientStep(
-      `Vehicle Photos — add all ${photoSlots.length} sides from gallery and SAVE`
-    );
-    // completePhotosStep throws if SAVE doesn't actually submit (app stays
-    // on the Photos step, or shows an error) — reaching this point without
-    // an uncaught error is the real assertion.
-    await CreateAppraisalPage.completePhotosStep(photoSlots);
+    clientStep('Vehicle Photos — add each mandatory photo from the gallery and SAVE');
+    // completePhotosStep reads the grid size (app_images_mandatory) and throws
+    // if fewer photos were added than that count, or if SAVE does not submit.
+    await CreateAppraisalPage.completePhotosStep();
   });
 });

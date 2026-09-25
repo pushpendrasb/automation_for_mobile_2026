@@ -7,6 +7,7 @@
  */
 import { TEST_IDS } from '../data/testIds';
 import { clientLog } from '../helpers/clientLog';
+import { byTextContains, forPlatform, isAndroid } from '../helpers/platform';
 import SystemAlertsPage from './SystemAlertsPage';
 
 export class LoginPage {
@@ -16,27 +17,37 @@ export class LoginPage {
 
   /**
    * Locators tried in order for the email field.
+   * Android uses content-desc / visible hint. iOS predicate and class chain
+   * are omitted on Android — UiAutomator2 rejects those strategies.
    */
   private emailSelectors(): string[] {
-    return [
+    return forPlatform([
       this.id(TEST_IDS.login.email),
+      'android=new UiSelector().description("login_email")',
+      'android=new UiSelector().text("E-mail")',
+      'android=new UiSelector().textContains("E-mail")',
+      'android=new UiSelector().className("android.widget.EditText").instance(0)',
       '-ios predicate string:type == "XCUIElementTypeTextField" AND placeholderValue == "E-mail"',
       '-ios class chain:**/XCUIElementTypeTextField[`placeholderValue == "E-mail"`]',
       '~E-mail',
-    ];
+    ]);
   }
 
   /**
    * Locators tried in order for the password field (secure).
    */
   private passwordSelectors(): string[] {
-    return [
+    return forPlatform([
       this.id(TEST_IDS.login.password),
+      'android=new UiSelector().description("login_password")',
+      'android=new UiSelector().text("Password")',
+      'android=new UiSelector().textContains("Password")',
+      'android=new UiSelector().className("android.widget.EditText").instance(1)',
       '-ios predicate string:type == "XCUIElementTypeSecureTextField" AND placeholderValue == "Password"',
       '-ios class chain:**/XCUIElementTypeSecureTextField[`placeholderValue == "Password"`]',
       '-ios predicate string:type == "XCUIElementTypeTextField" AND placeholderValue == "Password"',
       '~Password',
-    ];
+    ]);
   }
 
   /**
@@ -44,12 +55,16 @@ export class LoginPage {
    * Storyboard title is "LOGIN"; some builds only expose the checkmark image.
    */
   private submitSelectors(): string[] {
-    return [
+    return forPlatform([
       this.id(TEST_IDS.login.submit),
+      'android=new UiSelector().description("login_submit_button")',
+      'android=new UiSelector().text("LOGIN")',
+      'android=new UiSelector().text("Login")',
+      byTextContains('LOGIN'),
       '~LOGIN',
       '-ios predicate string:type == "XCUIElementTypeButton" AND (name == "LOGIN" OR label == "LOGIN" OR name == "Login" OR label == "Login")',
       '-ios class chain:**/XCUIElementTypeButton[`name == "LOGIN" OR label == "LOGIN"`]',
-    ];
+    ]);
   }
 
   /**
@@ -85,14 +100,20 @@ export class LoginPage {
    */
   private async dismissKeyboardIfNeeded(): Promise<void> {
     try {
-      // XCUITest: hideKeyboard may no-op if already hidden
-      await browser.hideKeyboard('pressKey', 'Return');
+      if (isAndroid()) {
+        await browser.hideKeyboard();
+      } else {
+        // XCUITest: hideKeyboard may no-op if already hidden
+        await browser.hideKeyboard('pressKey', 'Return');
+      }
     } catch {
       try {
         await browser.hideKeyboard();
       } catch {
         try {
-          await browser.execute('mobile: tap', { x: 20, y: 100 });
+          if (!isAndroid()) {
+            await browser.execute('mobile: tap', { x: 20, y: 100 });
+          }
         } catch {
           /* ignore */
         }
@@ -208,10 +229,11 @@ export class LoginPage {
    * Locators for the show/hide password eye button.
    */
   private showHideSelectors(): string[] {
-    return [
+    return forPlatform([
       this.id(TEST_IDS.login.showHidePassword),
+      'android=new UiSelector().description("login_show_hide_password")',
       '-ios predicate string:label CONTAINS[c] "password" AND type == "XCUIElementTypeButton"',
-    ];
+    ]);
   }
 
   /**
@@ -228,6 +250,20 @@ export class LoginPage {
    * True when password field is secure (hidden).
    */
   async isPasswordSecure(): Promise<boolean> {
+    if (isAndroid()) {
+      try {
+        const field = await $(
+          'android=new UiSelector().className("android.widget.EditText").instance(1)'
+        );
+        if (await field.isDisplayed().catch(() => false)) {
+          const password = await field.getAttribute('password').catch(() => '');
+          return String(password) === 'true';
+        }
+      } catch {
+        /* fall through */
+      }
+      return true;
+    }
     try {
       const secure = await $(
         '-ios predicate string:type == "XCUIElementTypeSecureTextField" AND (placeholderValue == "Password" OR name == "login_password" OR label == "Password")'
@@ -261,7 +297,9 @@ export class LoginPage {
     while (Date.now() < deadline) {
       try {
         const labels = await $$(
-          '-ios class chain:**/XCUIElementTypeStaticText'
+          isAndroid()
+            ? 'android=new UiSelector().className("android.widget.TextView")'
+            : '-ios class chain:**/XCUIElementTypeStaticText'
         );
         for (const label of labels) {
           const t = ((await label.getText().catch(() => '')) || '').toLowerCase();

@@ -107,6 +107,16 @@ export class CreateAppraisalPage {
   }
 
   /**
+   * Type into a field that should already be on screen.
+   * Scrolls one step at a time only when none of the selectors are displayed,
+   * so the top of Vehicle Required is not swept past before Name/Email/Mobile.
+   */
+  private async typeIntoVisible(selectors: string[], value: string): Promise<void> {
+    await this.scrollUntilDisplayed(selectors, 3);
+    await this.typeInto(selectors, value);
+  }
+
+  /**
    * App uses IQKeyboardManager: every keyboard gets a custom toolbar with a
    * "Toolbar Done Button" (rendered as a checkmark, no text). It's a real,
    * accessible button — not a keyboard "Return"/"Done" key — so WDA's
@@ -158,6 +168,54 @@ export class CreateAppraisalPage {
       await browser.releaseActions().catch(() => undefined);
       await browser.pause(250);
     }
+  }
+
+  /**
+   * Swipe down so content above the fold comes back (opposite of scrollDown).
+   * Used after counting the photo grid, which scrolls toward SAVE.
+   */
+  private async scrollUp(times = 1): Promise<void> {
+    const { width, height } = await browser.getWindowSize();
+    const x = Math.floor(width * 0.5);
+    for (let i = 0; i < times; i++) {
+      await browser
+        .action('pointer', { parameters: { pointerType: 'touch' } })
+        .move({ duration: 0, x, y: Math.floor(height * 0.28) })
+        .down({ button: 0 })
+        .pause(80)
+        .move({ duration: 450, x, y: Math.floor(height * 0.72) })
+        .up({ button: 0 })
+        .perform()
+        .catch(async () => {
+          await browser.execute('mobile: swipe', { direction: 'down' }).catch(() => undefined);
+        });
+      await browser.releaseActions().catch(() => undefined);
+      await browser.pause(250);
+    }
+  }
+
+  /** Scroll toward the top until a selector is on screen. */
+  private async scrollUpUntilDisplayed(
+    selectors: string[],
+    maxSwipes = 6
+  ): Promise<boolean> {
+    for (let i = 0; i <= maxSwipes; i++) {
+      for (const sel of selectors) {
+        try {
+          const el = await $(sel);
+          if (
+            (await el.isExisting().catch(() => false)) &&
+            (await el.isDisplayed().catch(() => false))
+          ) {
+            return true;
+          }
+        } catch {
+          /* try next */
+        }
+      }
+      if (i < maxSwipes) await this.scrollUp(1);
+    }
+    return false;
   }
 
   async waitForVehicleRequired(timeoutMs = 20000): Promise<void> {
@@ -277,6 +335,10 @@ export class CreateAppraisalPage {
 
   /**
    * Fill step-1 mandatory customer fields + registration (optional for req step).
+   *
+   * Name, email, and mobile are at the top of Vehicle Required when the page
+   * opens, so they are typed in place. A field is scrolled into view only when
+   * it is not already displayed (registration sits further down the form).
    */
   async fillCustomerAndRegistration(opts: {
     name: string;
@@ -285,16 +347,15 @@ export class CreateAppraisalPage {
     registration?: string;
   }): Promise<void> {
     clientLog('Entering customer name');
-    await this.typeInto(this.nameSelectors(), opts.name);
+    await this.typeIntoVisible(this.nameSelectors(), opts.name);
     clientLog('Email has been entered');
-    await this.typeInto(this.emailSelectors(), opts.email);
+    await this.typeIntoVisible(this.emailSelectors(), opts.email);
     clientLog('Mobile number has been entered');
-    await this.typeInto(this.mobileSelectors(), opts.mobile);
+    await this.typeIntoVisible(this.mobileSelectors(), opts.mobile);
     await this.dismissKeyboard();
 
     if (opts.registration) {
-      // Check before scrolling: a blind scrollDown(1) here used to overshoot
-      // past the REGISTRATION field into MODEL VARIANT / PRICING further down.
+      // Registration is below the customer block. Scroll only if it is off screen.
       await this.scrollUntilDisplayed(this.reqRegSelectors());
       clientLog(`Entering registration ${opts.registration}`);
       // Prefer trade-in field if already on that step; else vehicle required
@@ -734,15 +795,81 @@ export class CreateAppraisalPage {
   }
 
   /**
-   * Add photos for each slot label, then SAVE.
+   * Cells TradeIn.mm tags for vehicle photos. Rows 0–5 use arrLblImgType.
+   * When app_images_mandatory is 9, rows 6–8 are all named EXTRA, so they
+   * share tradein_vehicle_photo_extra.
    */
-  async completePhotosStep(labels: readonly string[]): Promise<void> {
+  private vehiclePhotoCellSelector(): string {
+    return '-ios predicate string:name BEGINSWITH "tradein_vehicle_photo_"';
+  }
+
+  /**
+   * How many vehicle photos this session must add.
+   *
+   * TradeIn.mm sets countTotalImages from the inventory API field
+   * app_images_mandatory, then builds the grid: 6 cells, or 9 when the
+   * value is 9. The count is not shown as its own label, so it is read
+   * from those cells. Extra cells sit lower in the grid, so the page is
+   * scrolled and the largest single snapshot is kept.
+   */
+  private async readRequiredVehiclePhotoCount(): Promise<number> {
+    const selector = this.vehiclePhotoCellSelector();
+    let required = 0;
+    for (let pass = 0; pass < 5; pass++) {
+      const els = await $$(selector);
+      let named = 0;
+      let extras = 0;
+      const seen = new Set<string>();
+      for (const el of els) {
+        const name = String((await el.getAttribute('name').catch(() => '')) || '');
+        if (name === 'tradein_vehicle_photo_extra') extras++;
+        else if (name.startsWith('tradein_vehicle_photo_') && !seen.has(name)) {
+          seen.add(name);
+          named++;
+        }
+      }
+      required = Math.max(required, named + extras);
+      if (required >= 9) break;
+      await this.scrollDown(1);
+    }
+    if (required < 1) {
+      throw new Error(
+        'Could not read app_images_mandatory from the vehicle photo grid (no photo slots found).'
+      );
+    }
+    clientLog(
+      `Required vehicle photos: ${required} (grid size from app_images_mandatory)`
+    );
+    return required;
+  }
+
+  /**
+   * Add photos for each slot label, then SAVE.
+   *
+   * The number of photos comes from the grid (app_images_mandatory), not from
+   * a fixed list. `labels` is only the order of the six named sides.
+   */
+  async completePhotosStep(
+    labels: readonly string[] = appraisalData.vehiclePhotoSlots
+  ): Promise<void> {
     await this.waitForPhotosStep();
+    const required = await this.readRequiredVehiclePhotoCount();
     if (!appraisalData.skipPhotos) {
-      if (labels.length === 0) {
-        clientLog('No vehicle photo slots selected — skipping step 4 gallery picks');
-      } else {
-        await this.addVehiclePhotosForSlots(labels);
+      const named = labels.slice(0, Math.min(labels.length, required));
+      if (named.length > 0) {
+        await this.scrollUpUntilDisplayed([this.id(this.vehiclePhotoSlotId(named[0]))]);
+      }
+      let added = await this.addVehiclePhotosForSlots(named);
+      const extrasNeeded = required - named.length;
+      if (extrasNeeded > 0) {
+        added += await this.addExtraVehiclePhotos(extrasNeeded);
+      }
+      clientLog(`Photos successfully added: ${added}`);
+      if (added !== required) {
+        await dumpPageSource('vehicle_photos_short');
+        throw new Error(
+          `Expected: app_images_mandatory = ${required}. Actual: only ${added} photos added.`
+        );
       }
     } else {
       clientLog('Skipping photo uploads (APPRAISEE_SKIP_PHOTOS)');
@@ -842,7 +969,8 @@ export class CreateAppraisalPage {
   async addVehiclePhotosForSlots(
     labels: readonly string[],
     damageSlotIndices: readonly number[] = [0, 3]
-  ): Promise<void> {
+  ): Promise<number> {
+    let added = 0;
     for (let i = 0; i < labels.length; i++) {
       const label = labels[i];
       const gridIndex = appraisalData.vehiclePhotoSlots.indexOf(
@@ -899,7 +1027,85 @@ export class CreateAppraisalPage {
           ? `Verified photo added for ${label}`
           : `Could not verify photo for ${label} (slot still reports empty)`
       );
+      if (verified) added++;
     }
+    return added;
+  }
+
+  /**
+   * The three extra cells (only present when app_images_mandatory is 9)
+   * share one accessibility id. Fill empty ones, re-querying after each
+   * pick because the collection reloads.
+   */
+  private async addExtraVehiclePhotos(count: number): Promise<number> {
+    const selector = '-ios predicate string:name == "tradein_vehicle_photo_extra"';
+    let added = 0;
+    for (let n = 0; n < count; n++) {
+      await this.scrollUntilDisplayed([selector], 4);
+      const els = await $$(selector);
+      let target: (typeof els)[number] | undefined;
+      for (const el of els) {
+        const value = String((await el.getAttribute('value').catch(() => '')) || '');
+        const shown = await el.isDisplayed().catch(() => false);
+        if (shown && value !== 'filled' && value !== 'damaged') {
+          target = el;
+          break;
+        }
+      }
+      if (!target) {
+        clientLog(`EXTRA photo ${n + 1} of ${count} was not on screen`);
+        break;
+      }
+      clientLog(`Adding vehicle photo: EXTRA ${n + 1}`);
+      await target.click();
+      try {
+        const gallery = await $(
+          '-ios predicate string:label == "Gallery" OR name == "Gallery"'
+        );
+        if (await gallery.isDisplayed().catch(() => false)) {
+          await gallery.click();
+        }
+      } catch {
+        /* picker may already be open */
+      }
+      const picked = await pickLibraryPhotoAtIndex(0);
+      if (!picked) {
+        clientLog(`Could not select a photo for EXTRA ${n + 1}`);
+        break;
+      }
+      const filled = await this.waitUntilExtraFilled(selector, added + 1);
+      if (!filled) {
+        clientLog(`Could not verify EXTRA photo ${n + 1}`);
+        break;
+      }
+      added++;
+      clientLog(`Verified photo added for EXTRA ${n + 1}`);
+    }
+    return added;
+  }
+
+  /** True once at least `needed` EXTRA cells report filled or damaged. */
+  private async waitUntilExtraFilled(
+    selector: string,
+    needed: number,
+    timeoutMs = 8000
+  ): Promise<boolean> {
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+      let filled = 0;
+      for (const swipeUp of [true, false]) {
+        if (swipeUp) await this.scrollUp(1);
+        const els = await $$(selector);
+        for (const el of els) {
+          const value = String((await el.getAttribute('value').catch(() => '')) || '');
+          if (value === 'filled' || value === 'damaged') filled++;
+        }
+        if (filled >= needed) return true;
+        filled = 0;
+      }
+      await browser.pause(200);
+    }
+    return false;
   }
 
   /**
