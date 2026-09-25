@@ -1,0 +1,5 @@
+{
+  "disabledSections": [],
+  "disabledItems": [],
+  "_comment": "Optional overrides for Release Checklist. Example: \"disabledSections\": [\"android\"] marks that platform N/A for this project."
+}

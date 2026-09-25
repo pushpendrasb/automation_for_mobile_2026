@@ -3,7 +3,7 @@
  *
  * Features: Appium status/start/stop, setup/bootstrap guide, projects, scripts,
  * live logs, reports, devices, env checks, run queue, history, suites,
- * screenshots, multi-run.
+ * screenshots, multi-run, Release Checklist (project-wise).
  *
  *   npm run dashboard  →  http://127.0.0.1:3939
  */
@@ -12,6 +12,7 @@ const fs = require('fs');
 const path = require('path');
 const { spawn, execSync } = require('child_process');
 const { URL } = require('url');
+const { createReleaseChecklistApi } = require('./releaseChecklist/api');
 
 const ROOT = path.resolve(__dirname, '..');
 const PUBLIC = path.join(__dirname, 'public');
@@ -1834,6 +1835,16 @@ function serveStatic(urlPath, res) {
   fs.createReadStream(filePath).pipe(res);
 }
 
+/** Project-wise Release Checklist APIs (persisted under data/release-checklists/). */
+const releaseChecklistApi = createReleaseChecklistApi({
+  dataDir: DATA_DIR,
+  projectsDir: PROJECTS_DIR,
+  isRealProject,
+  json,
+  reportToPdf,
+  readBody,
+});
+
 const server = http.createServer(async (req, res) => {
   const u = new URL(req.url || '/', `http://${HOST}:${PORT}`);
   const { pathname } = u;
@@ -1847,8 +1858,12 @@ const server = http.createServer(async (req, res) => {
         host: HOST,
         port: PORT,
         /** Lets the UI detect a stale dashboard process (old code without Setup APIs). */
-        features: { setup: true },
+        features: { setup: true, releaseChecklist: true },
       });
+    }
+
+    if (await releaseChecklistApi.handle(req, res, pathname, method, u)) {
+      return;
     }
 
     if (method === 'GET' && pathname === '/api/appium') {

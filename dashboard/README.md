@@ -31,8 +31,18 @@ All of these still work — use whichever you prefer:
 | **Reports list** | Latest report + catalog per project |
 | **Screenshots** | Opens `projects/<id>/screenshots` in Finder |
 | **History** | Last 25 runs; each finished run archives its own HTML report snapshot |
+| **Release Checklist** | Project-wise go-live checklist (Backend / Web / iOS / Android / Security / QA / Go-Live) · progress · upload evidence · PDF/Excel/CSV download · activity history |
 | **Theme** | Light / Dark (remembered) |
 | **Last project** | Reopens the project you used last |
+
+### Release Checklist
+
+Open **Release Checklist** in the header nav (next to Automation). Each project + environment (`Production` / `Staging`) has its own saved state under `dashboard/data/release-checklists/`.
+
+- Progress ignores **N/A** items
+- **Upload ≠ Release** — attaching a build only stores evidence; advance store/deploy status separately
+- Optional per-project defaults: `projects/<id>/releaseChecklist.json` (`disabledSections` / `disabledItems`)
+- Downloads: PDF · Excel · CSV named like `VetPortal_Production_Release_Checklist_v1.4.0.*`
 
 ### Setup on the dashboard
 

@@ -92,9 +92,17 @@
         </div>
         <p class="brand-mark">Mobile Automation</p>
         <h1>Control Desk</h1>
-        <p class="tagline">Setup · Appium · devices · projects · reports · one click</p>
+        <p class="tagline">Setup · Appium · devices · projects · release checklist · reports</p>
       </div>
       <div class="header-actions">
+        <nav class="desk-nav" aria-label="Control Desk sections">
+          <button type="button" class="desk-nav-btn active" data-desk-view="automation" id="navAutomation">
+            Automation
+          </button>
+          <button type="button" class="desk-nav-btn" data-desk-view="release" id="navRelease">
+            Release Checklist
+          </button>
+        </nav>
         <button type="button" class="btn btn-ghost btn-showcase" id="btnShowcase" title="Open the App Design showcase screen">
           Showcase
         </button>
@@ -180,6 +188,116 @@
     </section>
 
     <main class="layout">
+      <!-- Release Checklist (project-wise; persisted on server) -->
+      <section class="panel release-panel full-bleed" id="releasePanel" hidden>
+        <div class="panel-head row">
+          <div>
+            <p class="eyebrow">Go-live readiness</p>
+            <h2>Release Checklist</h2>
+            <p class="muted">Project-specific · Upload ≠ Release · progress excludes N/A</p>
+          </div>
+          <div class="release-head-actions">
+            <div class="download-menu" id="releaseDownloadMenu">
+              <button type="button" class="btn btn-primary" id="btnReleaseDownload">
+                Download Checklist
+              </button>
+              <div class="download-menu-panel" id="releaseDownloadPanel" hidden>
+                <p class="download-menu-heading">Full checklist</p>
+                <button type="button" data-export="pdf" data-section="all">PDF</button>
+                <button type="button" data-export="excel" data-section="all">Excel</button>
+                <button type="button" data-export="csv" data-section="all">CSV</button>
+                <p class="download-menu-heading">Separate platform reports</p>
+                <button type="button" data-export="pdf" data-section="ios">iOS only · PDF</button>
+                <button type="button" data-export="pdf" data-section="android">Android only · PDF</button>
+                <button type="button" data-export="pdf" data-section="web">Web only · PDF</button>
+                <button type="button" data-export="pdf" data-section="backend">Backend only · PDF</button>
+                <button type="button" data-export="pdf" data-section="security">Security only · PDF</button>
+                <button type="button" data-export="pdf" data-section="qa">QA / UAT only · PDF</button>
+                <button type="button" data-export="pdf" data-section="golive">Go-Live only · PDF</button>
+                <p class="download-menu-hint muted">Uses “Your name” as Prepared by on the report</p>
+              </div>
+            </div>
+            <button type="button" class="btn btn-ghost" id="btnReleaseReset">
+              Reset Checklist
+            </button>
+          </div>
+        </div>
+
+        <div class="release-summary cardish" id="releaseSummary">
+          <div class="release-controls">
+            <label>
+              <span>Project</span>
+              <select id="selReleaseProject"></select>
+            </label>
+            <label>
+              <span>Environment</span>
+              <select id="selReleaseEnv">
+                <option value="production">Production</option>
+                <option value="staging">Staging</option>
+              </select>
+            </label>
+            <label>
+              <span>Release version</span>
+              <input type="text" id="inpReleaseVersion" placeholder="v1.4.0" autocomplete="off" />
+            </label>
+            <label>
+              <span>Your name (who is editing now)</span>
+              <input type="text" id="inpReleaseUser" placeholder="e.g. Pushpendra" autocomplete="name" />
+            </label>
+          </div>
+          <div class="release-owners" id="releaseOwners">
+            <p class="release-owners-title">Platform developers (shown on PDF)</p>
+            <div class="release-owners-grid">
+              <label>
+                <span>iOS developer</span>
+                <input type="text" id="inpOwnerIos" data-owner="ios" placeholder="Pushpendra" autocomplete="off" />
+              </label>
+              <label>
+                <span>Web / Frontend</span>
+                <input type="text" id="inpOwnerWeb" data-owner="web" placeholder="Rohit" autocomplete="off" />
+              </label>
+              <label>
+                <span>Android developer</span>
+                <input type="text" id="inpOwnerAndroid" data-owner="android" placeholder="Pritam" autocomplete="off" />
+              </label>
+              <label>
+                <span>Backend developer</span>
+                <input type="text" id="inpOwnerBackend" data-owner="backend" placeholder="" autocomplete="off" />
+              </label>
+              <label>
+                <span>QA owner</span>
+                <input type="text" id="inpOwnerQa" data-owner="qa" placeholder="" autocomplete="off" />
+              </label>
+            </div>
+          </div>
+          <div class="release-kpis" id="releaseKpis">
+            <div class="release-kpi">
+              <p class="status-label">Overall progress</p>
+              <p class="status-value" id="releaseProgressPct">0%</p>
+              <p class="status-sub" id="releaseProgressSub">0 of 0</p>
+            </div>
+            <div class="release-kpi">
+              <p class="status-label">Release status</p>
+              <p class="status-value" id="releaseStatusValue">Not Started</p>
+              <p class="status-sub" id="releaseUpdatedSub">—</p>
+            </div>
+          </div>
+          <div class="release-platform-bars" id="releasePlatformBars"></div>
+        </div>
+
+        <div class="release-sections" id="releaseSections">
+          <p class="muted">Select a project to load its checklist.</p>
+        </div>
+
+        <div class="release-history panel-inner" id="releaseHistoryBlock">
+          <h3 class="section-label">Activity history</h3>
+          <div class="history-list" id="releaseHistoryList">
+            <p class="muted">No changes yet.</p>
+          </div>
+        </div>
+      </section>
+
+      <div id="automationView">
       <section class="panel setup-panel full-bleed is-collapsed" id="setupPanel">
         <div class="panel-head row">
           <div>
@@ -416,6 +534,7 @@
           </div>
         </section>
       </section>
+      </div><!-- /#automationView -->
     </main>
 
     <div class="brand-foot">
@@ -437,6 +556,7 @@
     </footer>
 
     <script src="/app.js"></script>
+    <script src="/releaseChecklist.js"></script>
     <script src="/brand.js"></script>
   </body>
 </html>

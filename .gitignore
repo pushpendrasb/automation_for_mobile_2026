@@ -15,3 +15,6 @@ projects/*/screenshots/*.png
 /vetpal-report.html
 *.zip
 dashboard/data/run-history.json
+dashboard/data/release-checklists/
+!dashboard/data/release-checklists/.gitkeep
+
