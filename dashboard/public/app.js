@@ -89,8 +89,6 @@
   let selectedProjectId = null;
   let runPoll = null;
   let lastLineCount = 0;
-  /** @type {string[]} */
-  let lastProjects = [];
   /** @type {string[]} cached raw run lines for Client/Full toggle */
   let cachedLogLines = [];
   /** @type {'client' | 'full'} */
@@ -1279,7 +1277,6 @@ function escapeHtml(s) {
   }
 
   function renderProjects(projects) {
-    lastProjects = projects.map((p) => p.id);
     if (!projects.length) {
       els.projectGrid.innerHTML =
         '<p class="muted">No projects found under <code>projects/</code>.</p>';
@@ -1867,6 +1864,11 @@ function escapeHtml(s) {
     if (selectedProjectId && els.selAndroidDevice.value) applySelectedDevices();
   });
   els.btnBack.addEventListener('click', showProjects);
+  // Showcase "Enter Control Desk" returns to the project list.
+  document.addEventListener('desk:show-projects', () => {
+    document.getElementById('navAutomation')?.click();
+    showProjects();
+  });
   els.btnStopRun.addEventListener('click', stopRun);
   els.btnStopAck?.addEventListener('click', stopRun);
   els.btnRunSelected.addEventListener('click', runSelected);
@@ -1917,16 +1919,11 @@ function escapeHtml(s) {
   refreshAppium();
   refreshDevices('');
   loadHistory();
-  loadProjects()
-    .then(() => {
-      const last = localStorage.getItem(LS_PROJECT);
-      if (last && lastProjects.includes(last)) {
-        openProject(last);
-      }
-    })
-    .catch((err) => {
-      els.projectGrid.innerHTML = `<p class="muted">${escapeHtml(err.message)}</p>`;
-    });
+  // Start on the full project list. The last opened app is not restored,
+  // so Enter Control Desk and a fresh load both show every project.
+  loadProjects().catch((err) => {
+    els.projectGrid.innerHTML = `<p class="muted">${escapeHtml(err.message)}</p>`;
+  });
   setInterval(refreshAppium, 8000);
   setInterval(() => refreshDevices(selectedProjectId || ''), 15000);
 })();

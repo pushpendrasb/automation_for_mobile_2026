@@ -87,6 +87,8 @@
     overlay.classList.remove('is-open');
     document.body.style.overflow = '';
     sessionStorage.setItem(SEEN_KEY, '1');
+    // Enter Control Desk should land on the full project list, not the last opened app.
+    document.dispatchEvent(new CustomEvent('desk:show-projects'));
     setTimeout(() => {
       if (!overlay.classList.contains('is-open')) overlay.hidden = true;
     }, 500);

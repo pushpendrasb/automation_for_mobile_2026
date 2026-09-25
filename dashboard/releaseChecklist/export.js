@@ -1,9 +1,15 @@
 /**
  * Export a release checklist as CSV, Excel (SpreadsheetML .xls), or printable HTML (→ PDF).
  *
+ * The PDF/HTML uses the same App Design cover and footer as the test report
+ * (framework/utils/reportBrand.js + brandedReport.js): light logo on the dark
+ * header, and logo plus appdesign.ie / email / phone in the footer.
+ *
  * Supports full checklist or a single platform/section report
  * (e.g. iOS-only for an iOS developer to send separately).
  */
+
+const { reportBrand } = require('../../framework/utils/reportBrand');
 
 const STATUS_LABEL = {
   not_started: 'Not Started',
@@ -311,9 +317,15 @@ function buildExcel(checklist) {
   };
 }
 
+/**
+ * Printable HTML for the checklist PDF.
+ * Cover and footer match the App Design test report (logo inlined as a data URI).
+ * @param {object} checklist enriched checklist from prepareExportChecklist
+ */
 function buildHtml(checklist) {
   const progress = checklist.progress || { percent: 0, bySection: {} };
   const who = developerName(checklist) || '— not set —';
+  const brand = reportBrand();
   const scopeLabel = checklist.exportScopeLabel || 'Full checklist';
   const isPartial = checklist.exportScope && checklist.exportScope !== 'full';
   const version = checklist.releaseVersion || '—';
@@ -398,14 +410,47 @@ function buildHtml(checklist) {
     })
     .join('');
 
+  const logo = brand
+    ? `<a href="${brand.site}" target="_blank" rel="noopener"><img src="${brand.logoLight}" alt="${escapeHtml(brand.name)}"></a>`
+    : `<span class="wordmark">App Design</span>`;
+  const footLinks = brand
+    ? `<a href="${brand.site}" target="_blank" rel="noopener">${escapeHtml(brand.siteLabel)}</a>
+       <a href="mailto:${brand.email}">${escapeHtml(brand.email)}</a>
+       <a href="${brand.phoneHref}">${escapeHtml(brand.phone)}</a>`
+    : 'App Design · appdesign.ie';
+
   const html = `<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8"/>
-<title>${escapeHtml(fileBaseName(checklist))}</title>
+<title>${escapeHtml(checklist.displayName || checklist.projectId)} — Release Checklist · App Design</title>
+${brand ? `<link rel="icon" href="${brand.logoDark}">` : ''}
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=Fraunces:ital,opsz,wght@0,9..144,500;0,9..144,600;1,9..144,500&display=swap" rel="stylesheet">
 <style>
-  body{font-family:Outfit,system-ui,sans-serif;color:#141414;background:#F7F5F2;margin:0;padding:28px 32px}
-  h1{font-family:Fraunces,Georgia,serif;font-size:26px;margin:0 0 6px}
+  :root{--orange:#F37324;--black:#141414;--paper:#F7F5F2;--ink:#141414;--ink-soft:#5E5A56;--line:#E7E1DA}
+  *{box-sizing:border-box}
+  body{font-family:Outfit,system-ui,sans-serif;color:var(--ink);background:var(--paper);margin:0;
+    -webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .wrap{max-width:1040px;margin:0 auto;padding:0 28px}
+  .cover{background:var(--black);color:#F5F1ED;position:relative;overflow:hidden;padding:28px 0 36px}
+  .cover::before{content:"";position:absolute;inset:0;
+    background:radial-gradient(620px 420px at 88% 18%,rgba(243,115,36,.30),transparent 62%);pointer-events:none}
+  .cover .wrap{position:relative;z-index:1}
+  .topbar{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}
+  .topbar img{height:38px;display:block}
+  .wordmark{font-weight:800;letter-spacing:.04em}
+  .chip{display:inline-flex;align-items:center;gap:8px;font-size:11.5px;font-weight:700;letter-spacing:.12em;
+    text-transform:uppercase;color:#FDBA8C;border:1px solid rgba(243,115,36,.45);background:rgba(243,115,36,.10);
+    padding:6px 14px;border-radius:999px}
+  .chip i{width:7px;height:7px;border-radius:50%;background:var(--orange);display:inline-block}
+  .eyebrow{margin-top:28px;font-size:12px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:#A8A09A}
+  .cover h1{font-family:Fraunces,Georgia,serif;font-weight:600;font-size:40px;line-height:1.05;margin:10px 0 0;letter-spacing:-.02em}
+  .cover h1 em{font-style:italic;color:var(--orange);font-weight:500}
+  .runline{display:flex;flex-wrap:wrap;gap:8px 22px;margin-top:16px;font-size:13.5px;color:#A8A09A}
+  .runline b{color:#F5F1ED;font-weight:600}
+  main.wrap{padding-top:28px;padding-bottom:8px}
   .scope{display:inline-block;background:#141414;color:#F5F1ED;font-size:12px;font-weight:700;
     letter-spacing:.06em;text-transform:uppercase;padding:6px 12px;border-radius:999px;margin-bottom:14px}
   .version-hero{background:linear-gradient(135deg,#141414,#2a211c);color:#F5F1ED;border-radius:18px;
@@ -446,18 +491,40 @@ function buildHtml(checklist) {
   .st-blocked{color:#DC2626;font-weight:700}
   .st-na{color:#9CA3AF}
   .st-not_started{color:#6B6560}
-  footer{margin-top:28px;color:#5E5A56;font-size:12px}
+  .brandfoot{background:var(--black);color:#A8A09A;margin-top:48px;position:relative;overflow:hidden}
+  .brandfoot::before{content:"";position:absolute;left:0;right:0;top:0;height:3px;background:linear-gradient(90deg,var(--orange),#FF9A5C,var(--orange))}
+  .brandfoot .wrap{display:flex;justify-content:space-between;align-items:center;gap:24px;flex-wrap:wrap;padding-top:28px;padding-bottom:28px}
+  .brandfoot img{height:32px;display:block}
+  .brandfoot .tagline{font-family:Fraunces,Georgia,serif;font-style:italic;color:#F5F1ED;font-size:18px;margin-top:10px}
+  .brandfoot .links{display:flex;flex-direction:column;gap:6px;text-align:right;font-size:13.5px}
+  .brandfoot a{color:#F5F1ED;text-decoration:none;font-weight:600}
+  .techline{text-align:center;font-size:12px;color:#78716C;padding:12px 16px 20px;background:var(--black);border-top:1px solid #221E1B}
   @media print{
-    body{background:#fff;padding:12px}
-    .version-hero,.dev-card,.team-cell{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+    body{background:#fff}
+    .cover,.brandfoot,.version-hero,.dev-card,.team-cell{-webkit-print-color-adjust:exact;print-color-adjust:exact}
   }
 </style>
 </head>
 <body>
-  <span class="scope">${escapeHtml(isPartial ? `${scopeLabel} report` : 'Full release checklist')}</span>
-  <h1>${escapeHtml(checklist.displayName || checklist.projectId)} · Release Checklist${
-    isPartial ? ` · ${escapeHtml(scopeLabel)}` : ''
-  }</h1>
+<header class="cover">
+  <div class="wrap">
+    <div class="topbar">
+      ${logo}
+      <span class="chip"><i></i>Release Checklist</span>
+    </div>
+    <div class="eyebrow">${escapeHtml(isPartial ? `${scopeLabel} report` : 'Full release checklist')} · Go-live readiness</div>
+    <h1>${escapeHtml(checklist.displayName || checklist.projectId)}<br><em>${
+      isPartial ? escapeHtml(scopeLabel) : 'Release checklist'
+    }</em></h1>
+    <div class="runline">
+      <span>Version <b>${escapeHtml(version)}</b></span>
+      <span>Environment <b>${escapeHtml(checklist.environment)}</b></span>
+      <span>Progress <b>${progress.percent}%</b></span>
+      <span>Status <b>${escapeHtml(checklist.releaseStatus || '—')}</b></span>
+    </div>
+  </div>
+</header>
+<main class="wrap">
 
   <div class="version-hero">
     <div>
@@ -510,15 +577,17 @@ function buildHtml(checklist) {
   </p>
   <div class="bars">${sectionBars}</div>
   ${sectionsHtml || '<p>No items in this scope.</p>'}
-  <footer>
-    Release <strong>${escapeHtml(version)}</strong> ·
-    Team: iOS ${escapeHtml(owners.ios || '—')},
-    Web ${escapeHtml(owners.web || '—')},
-    Android ${escapeHtml(owners.android || '—')} ·
-    Prepared by <strong>${escapeHtml(who)}</strong> ·
-    App Design · appdesign.ie ·
-    generated ${escapeHtml(new Date().toISOString())}
-  </footer>
+</main>
+<footer class="brandfoot">
+  <div class="wrap">
+    <div>
+      ${logo}
+      <div class="tagline">Apps with real purpose, tested on every release.</div>
+    </div>
+    <div class="links">${footLinks}</div>
+  </div>
+  <div class="techline">${escapeHtml(checklist.displayName || checklist.projectId)} release checklist · ${escapeHtml(version)} · prepared by ${escapeHtml(who)}</div>
+</footer>
 </body>
 </html>`;
 

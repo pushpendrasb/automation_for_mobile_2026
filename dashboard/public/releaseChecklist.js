@@ -181,10 +181,14 @@
     els.platformBars.innerHTML = Object.values(checklist.progress?.bySection || {})
       .map((s) => {
         const na = !s.applicable;
-        return `<div class="release-plat ${na ? 'is-na' : ''}">
-          <p class="plat-title">${escapeHtml(s.title.split('/')[0].trim())}</p>
+        const title = s.title.split('/')[0].trim();
+        return `<button type="button" class="release-plat ${na ? 'is-na' : ''}" data-goto-section="${escapeHtml(
+          s.id
+        )}" title="Open the ${escapeHtml(title)} checklist">
+          <p class="plat-title">${escapeHtml(title)}</p>
           <p class="plat-pct">${na ? 'N/A' : `${s.percent}%`}</p>
-        </div>`;
+          <span class="plat-go">Open checklist</span>
+        </button>`;
       })
       .join('');
 
@@ -209,6 +213,25 @@
       : '<p class="muted">No changes yet.</p>';
 
     bindSectionEvents();
+    bindPlatformJumps();
+  }
+
+  /**
+   * Platform tile (iOS, Android, Web, …) opens that section and expands it.
+   */
+  function openSection(sectionId) {
+    const art = els.sections.querySelector(`[data-section="${CSS.escape(sectionId)}"]`);
+    if (!art) return;
+    art.classList.remove('is-collapsed');
+    collapsed.delete(sectionId);
+    localStorage.setItem('desk.release.collapsed', JSON.stringify([...collapsed]));
+    art.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  function bindPlatformJumps() {
+    els.platformBars.querySelectorAll('[data-goto-section]').forEach((btn) => {
+      btn.addEventListener('click', () => openSection(btn.getAttribute('data-goto-section')));
+    });
   }
 
   function statusSelect(current) {
@@ -339,16 +362,21 @@
       })
       .join('');
 
-    return `<article class="release-section ${isCollapsed ? 'is-collapsed' : ''}" data-section="${escapeHtml(
+    return `<article class="release-section ${isCollapsed ? 'is-collapsed' : ''}" id="release-section-${escapeHtml(
       section.id
-    )}">
-      <button type="button" class="release-section-head" data-toggle-section>
-        <div>
-          <h3>${escapeHtml(section.title)}</h3>
-          <p class="muted">${escapeHtml(section.subtitle || '')}</p>
-        </div>
-        <span class="release-section-pct">${escapeHtml(pct)} Complete</span>
-      </button>
+    )}" data-section="${escapeHtml(section.id)}">
+      <div class="release-section-bar">
+        <button type="button" class="release-section-head" data-toggle-section>
+          <div>
+            <h3>${escapeHtml(section.title)}</h3>
+            <p class="muted">${escapeHtml(section.subtitle || '')}</p>
+          </div>
+          <span class="release-section-pct">${escapeHtml(pct)} Complete</span>
+        </button>
+        <button type="button" class="btn btn-ghost btn-tiny" data-section-pdf="${escapeHtml(
+          section.id
+        )}">Download PDF</button>
+      </div>
       <div class="release-section-body">
         ${uploadHtml}
         ${items}
@@ -357,6 +385,13 @@
   }
 
   function bindSectionEvents() {
+    els.sections.querySelectorAll('[data-section-pdf]').forEach((btn) => {
+      btn.addEventListener('click', (ev) => {
+        ev.stopPropagation();
+        download('pdf', btn.getAttribute('data-section-pdf'));
+      });
+    });
+
     els.sections.querySelectorAll('[data-toggle-section]').forEach((btn) => {
       btn.addEventListener('click', () => {
         const art = btn.closest('.release-section');

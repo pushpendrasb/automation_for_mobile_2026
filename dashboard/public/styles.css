@@ -1990,6 +1990,23 @@ body.theme-dark .desk-nav-btn.active {
   border-radius: 14px;
   padding: 0.7rem 0.8rem;
   background: var(--panel);
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  width: 100%;
+}
+
+.release-plat:hover {
+  border-color: var(--accent, #0f766e);
+}
+
+.release-plat .plat-go {
+  display: inline-block;
+  margin-top: 0.35rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--accent, #0f766e);
 }
 
 .release-plat .plat-title {
@@ -2024,6 +2041,35 @@ body.theme-dark .desk-nav-btn.active {
   border-radius: var(--radius);
   background: var(--card-bg);
   overflow: hidden;
+}
+
+.release-brand-logo {
+  height: 28px;
+  width: auto;
+  margin: 0.35rem 0 0.45rem;
+}
+
+.release-brand-logo.brand-logo--light {
+  display: none;
+}
+
+body.theme-dark .release-brand-logo.brand-logo--dark {
+  display: none;
+}
+
+body.theme-dark .release-brand-logo.brand-logo--light {
+  display: block;
+}
+
+.release-section-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding-right: 1rem;
+}
+
+.release-section-bar .btn-tiny {
+  flex-shrink: 0;
 }
 
 .release-section-head {

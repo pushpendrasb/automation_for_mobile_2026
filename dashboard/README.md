@@ -43,6 +43,7 @@ Open **Release Checklist** in the header nav (next to Automation). Each project 
 - **Upload ≠ Release** — attaching a build only stores evidence; advance store/deploy status separately
 - Optional per-project defaults: `projects/<id>/releaseChecklist.json` (`disabledSections` / `disabledItems`)
 - Downloads: PDF · Excel · CSV named like `VetPortal_Production_Release_Checklist_v1.4.0.*`
+- The PDF uses the same App Design branding as the test report (logo on the cover and footer, appdesign.ie, info@appdesign.ie)
 
 ### Setup on the dashboard
 
