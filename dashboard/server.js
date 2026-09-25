@@ -24,6 +24,59 @@ const HOST = process.env.DASHBOARD_HOST || '127.0.0.1';
 const DOMAIN = process.env.DASHBOARD_DOMAIN ?? 'testsuite.appdesign.ie';
 const APPIUM_URL = process.env.APPIUM_URL || 'http://127.0.0.1:4723';
 
+/**
+ * Resolve ANDROID_HOME / ANDROID_SDK_ROOT for Appium UiAutomator2.
+ * Control Desk / nohup often starts without the user's interactive shell profile,
+ * so Appium then fails session create with "Neither ANDROID_HOME nor ANDROID_SDK_ROOT".
+ * @returns {{ ANDROID_HOME: string, ANDROID_SDK_ROOT: string } | Record<string, never>}
+ */
+function resolveAndroidSdkEnv() {
+  const fromEnv =
+    process.env.ANDROID_HOME ||
+    process.env.ANDROID_SDK_ROOT ||
+    '';
+  const candidates = [
+    fromEnv,
+    path.join(require('os').homedir(), 'Library/Android/sdk'),
+    path.join(require('os').homedir(), 'Android/Sdk'),
+    '/usr/local/share/android-sdk',
+    '/opt/homebrew/share/android-commandlinetools',
+  ].filter(Boolean);
+  for (const dir of candidates) {
+    if (
+      fs.existsSync(dir) &&
+      (fs.existsSync(path.join(dir, 'platform-tools')) ||
+        fs.existsSync(path.join(dir, 'platforms')))
+    ) {
+      return { ANDROID_HOME: dir, ANDROID_SDK_ROOT: dir };
+    }
+  }
+  return {};
+}
+
+/**
+ * Environment for Appium + test child processes (SDK paths + platform-tools on PATH).
+ * @param {Record<string, string>} [extra]
+ */
+function childProcessEnv(extra = {}) {
+  const sdk = resolveAndroidSdkEnv();
+  const pathParts = [process.env.PATH || ''];
+  if (sdk.ANDROID_HOME) {
+    pathParts.unshift(
+      path.join(sdk.ANDROID_HOME, 'platform-tools'),
+      path.join(sdk.ANDROID_HOME, 'emulator'),
+      path.join(sdk.ANDROID_HOME, 'tools'),
+      path.join(sdk.ANDROID_HOME, 'tools', 'bin')
+    );
+  }
+  return {
+    ...process.env,
+    ...sdk,
+    PATH: pathParts.filter(Boolean).join(path.delimiter),
+    ...extra,
+  };
+}
+
 /** @type {import('child_process').ChildProcess | null} */
 let appiumChild = null;
 /** @type {object | null} */
@@ -280,6 +333,21 @@ function writeEnvVar(projectId, key, value) {
 }
 
 /**
+ * Device targeting for a project run — always taken from that project's .env
+ * so Control Desk "selected device" is what Appium uses (not a stale parent env).
+ * @param {string} projectId
+ * @returns {Record<string, string>}
+ */
+function readProjectDeviceEnv(projectId) {
+  const { vars } = readEnvFile(projectId);
+  /** @type {Record<string, string>} */
+  const out = {};
+  if (vars.IOS_DEVICE_UDID) out.IOS_DEVICE_UDID = vars.IOS_DEVICE_UDID;
+  if (vars.ANDROID_DEVICE_ID) out.ANDROID_DEVICE_ID = vars.ANDROID_DEVICE_ID;
+  return out;
+}
+
+/**
  * Env readiness for a project (no secret values returned).
  */
 function checkProjectEnv(projectId) {
@@ -324,8 +392,21 @@ function checkProjectEnv(projectId) {
 
 /**
  * Connected devices summary (iOS + Android).
+ * Cached briefly — xctrace is slow (~5–8s) and must not block opening a project.
  */
+let devicesCache = { at: 0, key: '', value: null };
+
 function getDevicesStatus(projectId) {
+  const cacheKey = String(projectId || '');
+  const now = Date.now();
+  if (
+    devicesCache.value &&
+    devicesCache.key === cacheKey &&
+    now - devicesCache.at < 8000
+  ) {
+    return devicesCache.value;
+  }
+
   let configuredUdid = '';
   let configuredAndroid = '';
   if (projectId && isRealProject(projectId)) {
@@ -334,39 +415,117 @@ function getDevicesStatus(projectId) {
     configuredAndroid = vars.ANDROID_DEVICE_ID || '';
   }
 
-  const iosOut = runCmd('xcrun xctrace list devices 2>/dev/null || true');
   const iosDevices = [];
-  // xctrace groups output under "== Devices ==" (online), "== Devices
-  // Offline ==", and "== Simulators ==" headers. Only the first section is
-  // actually connected right now — an offline-but-previously-paired device
-  // (e.g. left in this list from another Mac) matches the same
-  // "Name (version) (UDID)" pattern and must not be reported as connected.
-  let inOnlineSection = false;
+  const iosOffline = [];
+  const iosSimulators = [];
+  const seenUdids = new Set();
+
+  /**
+   * Prefer CoreDevice (`devicectl`) — xctrace often leaves wired phones under
+   * "Devices Offline" even when they are connected for Appium.
+   */
+  try {
+    const tmpJson = path.join(
+      require('os').tmpdir(),
+      `control-desk-devices-${process.pid}.json`
+    );
+    runCmd(
+      `xcrun devicectl list devices --json-output ${JSON.stringify(tmpJson)} 2>/dev/null || true`
+    );
+    if (fs.existsSync(tmpJson)) {
+      const raw = JSON.parse(fs.readFileSync(tmpJson, 'utf8'));
+      fs.unlinkSync(tmpJson);
+      const list =
+        raw?.result?.devices ||
+        raw?.result?.deviceList ||
+        raw?.devices ||
+        [];
+      for (const d of Array.isArray(list) ? list : []) {
+        const name =
+          d?.deviceProperties?.name ||
+          d?.deviceProperties?.marketingName ||
+          d?.name ||
+          'iPhone';
+        const version =
+          d?.deviceProperties?.osVersionNumber ||
+          d?.deviceProperties?.osVersion ||
+          '';
+        const udid =
+          d?.hardwareProperties?.udid ||
+          d?.identifier ||
+          d?.udid ||
+          '';
+        if (!udid || /Simulator/i.test(name)) continue;
+        const conn = d?.connectionProperties || {};
+        const tunnel = String(conn.tunnelState || '').toLowerCase();
+        const transport = String(conn.transportType || '').toLowerCase();
+        const entry = {
+          name: String(name).trim(),
+          version: String(version),
+          udid: String(udid),
+          transport: transport || null,
+        };
+        seenUdids.add(entry.udid);
+        // connected / available with an active tunnel = usable for automation
+        if (
+          tunnel === 'connected' ||
+          (transport === 'wired' && tunnel !== 'unavailable')
+        ) {
+          iosDevices.push(entry);
+        } else {
+          iosOffline.push({
+            ...entry,
+            state: tunnel || 'unavailable',
+          });
+        }
+      }
+    }
+  } catch {
+    /* fall through to xctrace */
+  }
+
+  // Fallback / supplement from xctrace (also picks up simulators)
+  const iosOut = runCmd('xcrun xctrace list devices 2>/dev/null || true');
+  let section = '';
   for (const line of iosOut.split('\n')) {
     const header = line.match(/^==\s*(.+?)\s*==$/);
     if (header) {
-      inOnlineSection = header[1].trim().toLowerCase() === 'devices';
+      const h = header[1].trim().toLowerCase();
+      if (h === 'devices') section = 'online';
+      else if (h.includes('offline')) section = 'offline';
+      else if (h.includes('simulator')) section = 'sim';
+      else section = '';
       continue;
     }
-    if (!inOnlineSection) continue;
-    // "Name (version) (UDID)" — the Mac itself matches this shape too
-    // ("Pushpendra's Mac mini (UUID)") but has no version group, so the
-    // 3-group pattern already excludes it.
+    if (!section) continue;
     const m = line.match(/^(.+?)\s+\(([^)]+)\)\s+\(([0-9A-Fa-f-]+)\)$/);
     if (!m) continue;
     const name = m[1].trim();
     const version = m[2];
     const udid = m[3];
-    if (/Simulator/i.test(line) || /simulators/i.test(name)) continue;
-    iosDevices.push({ name, version, udid });
+    if (section === 'sim' || /Simulator/i.test(line)) {
+      iosSimulators.push({ name, version, udid });
+      continue;
+    }
+    if (seenUdids.has(udid)) continue;
+    const entry = { name, version, udid };
+    seenUdids.add(udid);
+    if (section === 'online') iosDevices.push(entry);
+    else if (section === 'offline') iosOffline.push({ ...entry, state: 'offline' });
   }
 
   const adbOut = runCmd('adb devices 2>/dev/null || true');
   const androidDevices = [];
+  const androidOther = [];
   for (const line of adbOut.split('\n').slice(1)) {
     const parts = line.trim().split(/\s+/);
-    if (parts.length >= 2 && parts[1] === 'device') {
-      androidDevices.push({ id: parts[0], state: 'device' });
+    if (parts.length < 2) continue;
+    const id = parts[0];
+    const state = parts[1];
+    if (state === 'device') {
+      androidDevices.push({ id, state: 'device' });
+    } else if (state === 'unauthorized' || state === 'offline' || state === 'recovery') {
+      androidOther.push({ id, state });
     }
   }
 
@@ -378,24 +537,56 @@ function getDevicesStatus(projectId) {
     ? androidDevices.some((d) => d.id === configuredAndroid)
     : androidDevices.length > 0;
 
-  return {
+  const hintParts = [];
+  if (iosDevices.length) {
+    hintParts.push(
+      `iOS: ${iosDevices.map((d) => d.name).slice(0, 3).join(', ')}`
+    );
+  } else if (iosOffline.length) {
+    hintParts.push(
+      `iOS offline: ${iosOffline
+        .map((d) => d.name)
+        .slice(0, 4)
+        .join(', ')} — unlock, USB cable, Trust This Computer`
+    );
+  }
+  if (!iosDevices.length && iosSimulators.length) {
+    hintParts.push(
+      `${iosSimulators.length} simulators — boot one in Simulator.app`
+    );
+  }
+  if (androidOther.some((d) => d.state === 'unauthorized')) {
+    hintParts.push(
+      'Android USB unauthorized — unlock phone and tap Allow USB debugging'
+    );
+  }
+
+  const summary =
+    iosDevices.length || androidDevices.length
+      ? `${iosDevices.length} iOS · ${androidDevices.length} Android`
+      : 'No devices connected';
+
+  const value = {
     ios: {
       devices: iosDevices,
+      offline: iosOffline,
+      simulators: iosSimulators.slice(0, 8),
       configuredUdid: configuredUdid || null,
       ready: iosDevices.length > 0 || Boolean(configuredUdid && iosOut.includes(configuredUdid)),
       configuredOk: !configuredUdid || iosConfiguredOk,
     },
     android: {
       devices: androidDevices,
+      other: androidOther,
       configuredId: configuredAndroid || null,
       ready: androidDevices.length > 0,
       configuredOk: !configuredAndroid || androidConfiguredOk,
     },
-    summary:
-      iosDevices.length || androidDevices.length
-        ? `${iosDevices.length} iOS · ${androidDevices.length} Android`
-        : 'No devices detected',
+    summary,
+    hint: hintParts.join(' · ') || '',
   };
+  devicesCache = { at: Date.now(), key: cacheKey, value };
+  return value;
 }
 
 function resolveReportFile(projectId, fileName) {
@@ -685,6 +876,16 @@ function listSuites(projectId) {
     });
   }
 
+  if (scripts.includes('test:ios:history')) {
+    suites.push({
+      id: 'ios-history',
+      title: 'iOS Appraisals History',
+      scripts: ['test:ios:history'],
+      description:
+        'Side menu APPRAISALS HISTORY — My / All Appraisals cards and detail tabs (AP-HI-P01)',
+    });
+  }
+
   if (scripts.includes('test:ios:smoke') || scripts.includes('test:ios:screens')) {
     const smoke = ['test:ios:smoke', 'test:ios:screens'].filter((n) =>
       scripts.includes(n)
@@ -721,51 +922,58 @@ function listProjects() {
   return fs
     .readdirSync(PROJECTS_DIR, { withFileTypes: true })
     .filter((d) => d.isDirectory() && isRealProject(d.name))
-    .map((d) => {
-      const id = d.name;
-      const root = path.join(PROJECTS_DIR, id);
-      let displayName = id;
-      let description = '';
-      let scriptLanguage = 'javascript';
-      let bundleId = '';
-      let appPackage = '';
-      try {
-        const cfg = require(path.join(root, 'project.config.js'));
-        displayName = cfg.displayName || id;
-        scriptLanguage = cfg.scriptLanguage || 'javascript';
-        bundleId = cfg.defaults?.ios?.bundleId || '';
-        appPackage = cfg.defaults?.android?.appPackage || '';
-      } catch {
-        /* no config */
-      }
-      try {
-        const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
-        description = pkg.description || '';
-      } catch {
-        /* ignore */
-      }
-      const scripts = listScripts(id);
-      const reports = listReports(id);
-      const suites = listSuites(id);
-      const env = checkProjectEnv(id);
-      const shotsDir = path.join(root, 'screenshots');
-      return {
-        id,
-        displayName,
-        description,
-        scriptLanguage,
-        bundleId,
-        appPackage,
-        scriptCount: scripts.length,
-        hasReports: reports.length > 0,
-        reportCount: reports.length,
-        primaryReportUrl: reports[0]?.url || null,
-        suiteCount: suites.length,
-        envOk: env.ok,
-        hasScreenshots: fs.existsSync(shotsDir),
-      };
-    })
+    .map((d) => getProjectMeta(d.name))
+    .filter(Boolean)
     .sort((a, b) => String(a.displayName).localeCompare(String(b.displayName)));
+}
+
+/**
+ * Metadata for one project card / detail header (does not scan other projects).
+ * @param {string} id
+ */
+function getProjectMeta(id) {
+  if (!isRealProject(id)) return null;
+  const root = path.join(PROJECTS_DIR, id);
+  let displayName = id;
+  let description = '';
+  let scriptLanguage = 'javascript';
+  let bundleId = '';
+  let appPackage = '';
+  try {
+    const cfg = require(path.join(root, 'project.config.js'));
+    displayName = cfg.displayName || id;
+    scriptLanguage = cfg.scriptLanguage || 'javascript';
+    bundleId = cfg.defaults?.ios?.bundleId || '';
+    appPackage = cfg.defaults?.android?.appPackage || '';
+  } catch {
+    /* no config */
+  }
+  try {
+    const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
+    description = pkg.description || '';
+  } catch {
+    /* ignore */
+  }
+  const scripts = listScripts(id);
+  const reports = listReports(id);
+  const suites = listSuites(id);
+  const env = checkProjectEnv(id);
+  const shotsDir = path.join(root, 'screenshots');
+  return {
+    id,
+    displayName,
+    description,
+    scriptLanguage,
+    bundleId,
+    appPackage,
+    scriptCount: scripts.length,
+    hasReports: reports.length > 0,
+    reportCount: reports.length,
+    primaryReportUrl: reports[0]?.url || null,
+    suiteCount: suites.length,
+    envOk: env.ok,
+    hasScreenshots: fs.existsSync(shotsDir),
+  };
 }
 
 async function checkAppium() {
@@ -822,18 +1030,31 @@ async function startAppium() {
     return { ok: true, starting: true, url: APPIUM_URL };
   }
 
+  const sdk = resolveAndroidSdkEnv();
+  if (!sdk.ANDROID_HOME) {
+    return {
+      ok: false,
+      error:
+        'ANDROID_HOME not found. Install Android Studio SDK (usually ~/Library/Android/sdk), then Start Appium again.',
+      url: APPIUM_URL,
+    };
+  }
+
   appiumChild = spawn('appium', [], {
     cwd: ROOT,
     detached: true,
     stdio: 'ignore',
-    env: process.env,
+    // Must include ANDROID_HOME — Appium UiAutomator2 reads it for session create
+    env: childProcessEnv({ DASHBOARD_NO_OPEN: '1' }),
   });
   appiumChild.unref();
 
   for (let i = 0; i < 20; i++) {
     await new Promise((r) => setTimeout(r, 500));
     const s = await checkAppium();
-    if (s.running) return { ok: true, started: true, ...s };
+    if (s.running) {
+      return { ok: true, started: true, androidHome: sdk.ANDROID_HOME, ...s };
+    }
   }
   return {
     ok: false,
@@ -991,14 +1212,103 @@ function pumpQueue() {
   if (activeRun && activeRun.status === 'running') return;
   const next = runQueue.shift();
   if (!next) return;
-  beginScriptRun(next.projectId, next.script, { fromQueue: true, env: next.env });
+  beginScriptRun(next.projectId, next.script, {
+    fromQueue: true,
+    env: next.env,
+    controlDeskBody: next.controlDeskBody,
+  });
 }
 
 /**
  * Start immediately or enqueue if busy.
  * @param {Record<string, string>} [rawEnv] values from the script's run inputs
  */
-function enqueueOrRun(projectId, script, rawEnv) {
+/** Known step-4 photo captions. Anything else from the dashboard is dropped. */
+const APPRAISAL_PHOTO_SLOTS = [
+  'FRONT',
+  'DRIVER FRONT',
+  'DRIVER REAR',
+  'REAR',
+  'PASSENGER REAR',
+  'PASSENGER FRONT',
+];
+
+const APPRAISAL_DAMAGE_SLOTS = [
+  'DRIVER FRONT',
+  'DRIVER REAR',
+  'PASSENGER FRONT',
+  'PASSENGER REAR',
+  'EXTRA',
+];
+
+/**
+ * Control Desk success run: env lists exactly the checked boxes (comma-separated).
+ * Empty string means no gallery picks for that step.
+ */
+function normalizeSlotList(arr, order) {
+  const allowed = new Set(order);
+  const picked = (Array.isArray(arr) ? arr : [])
+    .map((s) => String(s || '').trim().toUpperCase())
+    .filter((s) => allowed.has(s));
+  return order.filter((s) => picked.includes(s));
+}
+
+/** Persist Control Desk checkbox state for the success script (read by the test). */
+function writeControlDeskAppraisalRun(projectId, body) {
+  const cwd = path.join(PROJECTS_DIR, projectId);
+  const file = path.join(cwd, '.control-desk-appraisal-run.json');
+  const payload = {
+    source: 'control-desk',
+    writtenAt: Date.now(),
+    tyreDamage: Boolean(body.tyreDamage),
+    alloyDamage: Boolean(body.alloyDamage),
+    vehiclePhotoSlots: [...APPRAISAL_PHOTO_SLOTS],
+    damagePhotoSlots: normalizeSlotList(body.damagePhotoSlots, APPRAISAL_DAMAGE_SLOTS),
+  };
+  fs.writeFileSync(file, `${JSON.stringify(payload, null, 2)}\n`, 'utf8');
+  return payload;
+}
+
+function slotsEnvFromCheckboxes(arr, order, envKey) {
+  const unique = normalizeSlotList(arr, order);
+  return { [envKey]: unique.join(',') };
+}
+
+/**
+ * Checked dashboard boxes → APPRAISEE_VEHICLE_SLOTS (non-success scripts: omit = no override).
+ */
+function photoSlotsEnv(photoSlots) {
+  if (!Array.isArray(photoSlots) || photoSlots.length === 0) return {};
+  return slotsEnvFromCheckboxes(photoSlots, APPRAISAL_PHOTO_SLOTS, 'APPRAISEE_VEHICLE_SLOTS');
+}
+
+function damageSlotsEnv(damagePhotoSlots) {
+  if (!Array.isArray(damagePhotoSlots) || damagePhotoSlots.length === 0) return {};
+  return slotsEnvFromCheckboxes(
+    damagePhotoSlots,
+    APPRAISAL_DAMAGE_SLOTS,
+    'APPRAISEE_DAMAGE_SLOTS'
+  );
+}
+
+/**
+ * Control Desk options for test:ios:appraisal:success only.
+ * Step 3 damage slots from checkboxes; step 4 vehicle photos are always all 6 in the test.
+ */
+function appraisalSuccessRunEnv(body) {
+  return {
+    ...slotsEnvFromCheckboxes(
+      body.damagePhotoSlots,
+      APPRAISAL_DAMAGE_SLOTS,
+      'APPRAISEE_DAMAGE_SLOTS'
+    ),
+    APPRAISEE_TYRE_DAMAGE: body.tyreDamage ? 'true' : 'false',
+    APPRAISEE_ALLOY_DAMAGE: body.alloyDamage ? 'true' : 'false',
+    APPRAISEE_CONTROL_DESK: '1',
+  };
+}
+
+function enqueueOrRun(projectId, script, extraEnv = {}, controlDeskBody = null) {
   if (!isRealProject(projectId)) {
     return { ok: false, error: `Unknown project: ${projectId}` };
   }
@@ -1006,12 +1316,20 @@ function enqueueOrRun(projectId, script, rawEnv) {
   const found = scripts.find((s) => s.name === script);
   if (!found) return { ok: false, error: `Unknown script: ${script}` };
 
-  const checked = sanitizeRunEnv(projectId, script, rawEnv);
+  // Run-input fields are validated; APPRAISEE_* helper env is passed through for appraisal flows.
+  const raw = extraEnv && typeof extraEnv === 'object' ? extraEnv : {};
+  const appraisalEnv = {};
+  const inputEnv = {};
+  for (const [key, value] of Object.entries(raw)) {
+    if (key.startsWith('APPRAISEE_')) appraisalEnv[key] = value;
+    else inputEnv[key] = value;
+  }
+  const checked = sanitizeRunEnv(projectId, script, inputEnv);
   if (!checked.ok) return checked;
-  const env = checked.env;
+  const env = { ...appraisalEnv, ...(checked.env || {}) };
 
   if (activeRun && activeRun.status === 'running') {
-    runQueue.push({ projectId, script, env });
+    runQueue.push({ projectId, script, env, controlDeskBody });
     return {
       ok: true,
       queued: true,
@@ -1020,7 +1338,19 @@ function enqueueOrRun(projectId, script, rawEnv) {
       run: publicRun(),
     };
   }
-  return beginScriptRun(projectId, script, { env });
+  return beginScriptRun(projectId, script, { env, controlDeskBody });
+}
+
+function controlDeskBodyFromEnv(extraEnv) {
+  if (extraEnv.APPRAISEE_CONTROL_DESK !== '1') return null;
+  return {
+    tyreDamage: extraEnv.APPRAISEE_TYRE_DAMAGE === 'true',
+    alloyDamage: extraEnv.APPRAISEE_ALLOY_DAMAGE === 'true',
+    damagePhotoSlots: String(extraEnv.APPRAISEE_DAMAGE_SLOTS || '')
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean),
+  };
 }
 
 /**
@@ -1037,6 +1367,16 @@ function beginScriptRun(projectId, script, opts = {}) {
   const envLines = Object.entries(runEnv).map(
     ([k, v]) => `env: ${k}=${secretKeys.has(k) ? '••••••' : v}`
   );
+  const extraEnv = opts.env && typeof opts.env === 'object' ? opts.env : {};
+  let deskPayload = null;
+  if (script === 'test:ios:appraisal:success') {
+    const body =
+      opts.controlDeskBody ||
+      controlDeskBodyFromEnv(extraEnv);
+    if (body) {
+      deskPayload = writeControlDeskAppraisalRun(projectId, body);
+    }
+  }
   activeRun = {
     id: runId,
     projectId,
@@ -1055,10 +1395,50 @@ function beginScriptRun(projectId, script, opts = {}) {
     reports: [],
     summary: null,
   };
+  if (deskPayload) {
+    activeRun.lines.push(
+      `Control Desk: damage [${deskPayload.damagePhotoSlots.join(', ') || 'none'}] · vehicle [all 6 sides — automation]`
+    );
+  } else if (script === 'test:ios:appraisal:success') {
+    activeRun.lines.push(
+      'Control Desk: no photo options — using test defaults (all slots). Run from the success row Run button or restart Control Desk.'
+    );
+  }
 
+  if (extraEnv.APPRAISEE_DAMAGE_SLOTS !== undefined) {
+    activeRun.lines.push(
+      extraEnv.APPRAISEE_DAMAGE_SLOTS
+        ? `damage photos: ${extraEnv.APPRAISEE_DAMAGE_SLOTS}`
+        : 'damage photos: (none — no checkboxes selected)'
+    );
+  }
+  if (script === 'test:ios:appraisal:success') {
+    activeRun.lines.push('vehicle photos: all 6 sides (fixed in automation)');
+  }
+  if (extraEnv.APPRAISEE_TYRE_DAMAGE !== undefined) {
+    activeRun.lines.push(`tyres damage: ${extraEnv.APPRAISEE_TYRE_DAMAGE}`);
+  }
+  if (extraEnv.APPRAISEE_ALLOY_DAMAGE !== undefined) {
+    activeRun.lines.push(`alloys damage: ${extraEnv.APPRAISEE_ALLOY_DAMAGE}`);
+  }
+  const deviceEnv = readProjectDeviceEnv(projectId);
+  if (deviceEnv.IOS_DEVICE_UDID) {
+    activeRun.lines.push(`iOS device UDID: ${deviceEnv.IOS_DEVICE_UDID}`);
+  }
+  if (deviceEnv.ANDROID_DEVICE_ID) {
+    activeRun.lines.push(`Android device: ${deviceEnv.ANDROID_DEVICE_ID}`);
+  }
   runChild = spawn('npm', ['run', script], {
     cwd,
-    env: { ...process.env, ...runEnv, FORCE_COLOR: '0' },
+    // Re-read project .env device ids on every run so the Control Desk picker
+    // wins over any stale IOS_DEVICE_UDID / ANDROID_DEVICE_ID in the parent env.
+    // Also inject ANDROID_HOME so Android sessions work when started from Control Desk.
+    env: childProcessEnv({
+      ...deviceEnv,
+      ...runEnv,
+      FORCE_COLOR: '0',
+      ...extraEnv,
+    }),
     shell: false,
     // New process group so Stop can kill npm + WDIO children together
     detached: process.platform !== 'win32',
@@ -1098,14 +1478,49 @@ function beginScriptRun(projectId, script, opts = {}) {
 }
 
 /**
+ * Queue items may be script names or `{ script, tyreDamage, photoSlots, … }`
+ * for test:ios:appraisal:success checkbox options.
+ */
+function normalizeQueuedScript(entry) {
+  if (typeof entry === 'string') {
+    return { script: entry, env: {}, controlDeskBody: null };
+  }
+  if (!entry || typeof entry !== 'object') {
+    return { script: '', env: {}, controlDeskBody: null };
+  }
+  const script = String(entry.script || entry.name || '').trim();
+  if (script === 'test:ios:appraisal:success') {
+    return {
+      script,
+      env: appraisalSuccessRunEnv(entry),
+      controlDeskBody: entry,
+    };
+  }
+  return {
+    script,
+    env: photoSlotsEnv(entry.photoSlots),
+    controlDeskBody: null,
+  };
+}
+
+/**
  * @param {Record<string, Record<string, string>>} [envByScript] run-input values per script
  */
 function enqueueMany(projectId, scripts, envByScript = {}) {
-  const list = (scripts || []).filter(Boolean);
+  const list = (scripts || [])
+    .filter(Boolean)
+    .map(normalizeQueuedScript)
+    .filter((x) => x.script);
   if (!list.length) return { ok: false, error: 'No scripts provided' };
   const results = [];
-  for (const script of list) {
-    results.push(enqueueOrRun(projectId, script, envByScript?.[script]));
+  for (const item of list) {
+    const mergedEnv = {
+      ...(envByScript?.[item.script] || {}),
+      ...(item.env || {}),
+    };
+    results.push(
+      enqueueOrRun(projectId, item.script, mergedEnv, item.controlDeskBody)
+    );
   }
   return {
     ok: results.every((r) => r.ok),
@@ -1448,6 +1863,10 @@ const server = http.createServer(async (req, res) => {
 
     if (method === 'GET' && pathname === '/api/devices') {
       const projectId = u.searchParams.get('projectId') || '';
+      // Bust cache when the user clicks Refresh devices
+      if (u.searchParams.get('refresh') === '1') {
+        devicesCache = { at: 0, key: '', value: null };
+      }
       return json(res, getDevicesStatus(projectId));
     }
 
@@ -1473,14 +1892,15 @@ const server = http.createServer(async (req, res) => {
     if (method === 'GET' && projectMatch) {
       const id = decodeURIComponent(projectMatch[1]);
       if (!isRealProject(id)) return json(res, { error: 'Not found' }, 404);
-      const meta = listProjects().find((p) => p.id === id);
+      // Do not call getDevicesStatus here — xctrace is slow and the UI already
+      // loads devices via /api/devices after the project panel opens.
+      const meta = getProjectMeta(id);
       return json(res, {
         project: meta,
         scripts: listScripts(id),
         reports: listReports(id),
         suites: listSuites(id),
         env: checkProjectEnv(id),
-        devices: getDevicesStatus(id),
       });
     }
 
@@ -1490,9 +1910,34 @@ const server = http.createServer(async (req, res) => {
       return json(res, checkProjectEnv(id));
     }
 
-    // Device-specific — the same project checkout copied to another Mac
-    // needs a different IOS_DEVICE_UDID for whatever iPhone is plugged into
-    // that machine. The UI confirms with the user before calling this.
+    // Device-specific — pick which connected phone this project's tests use.
+    const deviceEnvMatch = pathname.match(/^\/api\/projects\/([^/]+)\/env\/device$/);
+    if (method === 'POST' && deviceEnvMatch) {
+      const id = decodeURIComponent(deviceEnvMatch[1]);
+      if (!isRealProject(id)) return json(res, { error: 'Not found' }, 404);
+      const body = await readBody(req);
+      const platform = String(body.platform || '').toLowerCase();
+      if (platform === 'ios') {
+        const udid = String(body.udid || body.id || '').trim();
+        if (!/^[0-9A-Fa-f-]{8,64}$/.test(udid)) {
+          return json(res, { ok: false, error: 'Invalid iOS UDID' }, 400);
+        }
+        writeEnvVar(id, 'IOS_DEVICE_UDID', udid);
+        devicesCache = { at: 0, key: '', value: null };
+        return json(res, { ok: true, platform: 'ios', udid });
+      }
+      if (platform === 'android') {
+        const deviceId = String(body.deviceId || body.id || '').trim();
+        if (!/^[A-Za-z0-9._:-]{2,64}$/.test(deviceId)) {
+          return json(res, { ok: false, error: 'Invalid Android device id' }, 400);
+        }
+        writeEnvVar(id, 'ANDROID_DEVICE_ID', deviceId);
+        devicesCache = { at: 0, key: '', value: null };
+        return json(res, { ok: true, platform: 'android', deviceId });
+      }
+      return json(res, { ok: false, error: 'platform must be ios or android' }, 400);
+    }
+
     const udidMatch = pathname.match(/^\/api\/projects\/([^/]+)\/env\/udid$/);
     if (method === 'POST' && udidMatch) {
       const id = decodeURIComponent(udidMatch[1]);
@@ -1503,6 +1948,7 @@ const server = http.createServer(async (req, res) => {
         return json(res, { ok: false, error: 'Invalid UDID' }, 400);
       }
       writeEnvVar(id, 'IOS_DEVICE_UDID', udid);
+      devicesCache = { at: 0, key: '', value: null };
       return json(res, { ok: true, udid });
     }
 
@@ -1569,10 +2015,8 @@ const server = http.createServer(async (req, res) => {
 
     if (method === 'POST' && pathname === '/api/run') {
       const body = await readBody(req);
-      return json(
-        res,
-        enqueueOrRun(String(body.projectId || ''), String(body.script || ''), body.env)
-      );
+      const script = String(body.script || '');
+      return json(res, enqueueOrRun(String(body.projectId || ''), script));
     }
 
     if (method === 'POST' && pathname === '/api/run/many') {

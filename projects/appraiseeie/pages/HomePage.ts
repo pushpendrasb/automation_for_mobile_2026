@@ -133,6 +133,14 @@ export class HomePage {
     await this.openSideMenu();
     await SideMenuPage.tapCreateNewAppraisal();
   }
+
+  /**
+   * Open side menu and go to Appraisals History (HistoryViewController).
+   */
+  async openAppraisalsHistory(): Promise<void> {
+    await this.openSideMenu();
+    await SideMenuPage.tapAppraisalsHistory();
+  }
 }
 
 export default new HomePage();

@@ -1,57 +1,74 @@
 /**
- * Create Appraisal (TradeIn) fixtures and env-driven options.
+ * Create Appraisal (TradeIn) fixtures and env-driven photo behaviour.
  *
- * Override with .env:
- * - APPRAISEE_TYRE_DAMAGE=true|false (default true)
- * - APPRAISEE_ALLOY_DAMAGE=true|false (default false)
- * - APPRAISEE_SKIP_PHOTOS=true to skip photo taps (debug only)
+ * Step 3: APPRAISEE_TYRE_DAMAGE / APPRAISEE_ALLOY_DAMAGE (default tyres DAMAGE).
+ *         When either is DAMAGE, the test fills all five damage strip slots.
+ * Step 4: Always all six vehicle sides.
+ *
+ * Optional: APPRAISEE_SKIP_PHOTOS=true (debug).
  */
-export const appraisalData = {
-  customerName: 'Paul',
-  customerEmail: 'sami@appdesign.ie',
-  /** Irish-style plate entered on the Vehicle Required step */
-  registrationRequired: '141KY51',
-  /** Irish-style plate entered on the Vehicle Trade In step (lookup / auto-fill) */
-  registrationTradeIn: '141D6333',
-  /** Trade-in mileage when validation fails */
-  mileage: '45000',
 
-  /** Random mobile — digits only, not a validated Irish mobile */
+function envTruthy(raw: string | undefined, defaultValue: boolean): boolean {
+  if (raw === undefined || raw.trim() === '') return defaultValue;
+  const v = raw.trim().toLowerCase();
+  return v === "1" || v === "true" || v === "yes";
+}
+
+export const appraisalData = {
+  customerName: "Paul",
+  customerEmail: "sami@appdesign.ie",
+  registrationRequired: "141KY51",
+  registrationTradeIn: "141D6333",
+  mileage: "45000",
+
   randomMobile(): string {
     const n = Math.floor(100000000 + Math.random() * 899999999);
     return String(n);
   },
 
   get tyreDamage(): boolean {
-    const raw = (process.env.APPRAISEE_TYRE_DAMAGE || 'true').trim().toLowerCase();
-    return raw === '1' || raw === 'true' || raw === 'yes';
+    return envTruthy(process.env.APPRAISEE_TYRE_DAMAGE, true);
   },
 
   get alloyDamage(): boolean {
-    const raw = (process.env.APPRAISEE_ALLOY_DAMAGE || 'false').trim().toLowerCase();
-    return raw === '1' || raw === 'true' || raw === 'yes';
+    return envTruthy(process.env.APPRAISEE_ALLOY_DAMAGE, false);
   },
 
   get skipPhotos(): boolean {
-    const raw = (process.env.APPRAISEE_SKIP_PHOTOS || 'false').trim().toLowerCase();
-    return raw === '1' || raw === 'true' || raw === 'yes';
+    return envTruthy(process.env.APPRAISEE_SKIP_PHOTOS, false);
   },
 
-  /** Labels on vehicle photo grid (step 4) */
   vehiclePhotoSlots: [
-    'FRONT',
-    'DRIVER FRONT',
-    'DRIVER REAR',
-    'REAR',
-    'PASSENGER REAR',
-    'PASSENGER FRONT',
+    "FRONT",
+    "DRIVER FRONT",
+    "DRIVER REAR",
+    "REAR",
+    "PASSENGER REAR",
+    "PASSENGER FRONT",
   ] as const,
 
-  /** Tyre damage photo slots (step 3 when DAMAGE selected) */
-  tyrePhotoSlots: [
-    'DRIVER FRONT',
-    'DRIVER REAR',
-    'PASSENGER FRONT',
-    'PASSENGER REAR',
+  damagePhotoSlots: [
+    "DRIVER FRONT",
+    "DRIVER REAR",
+    "PASSENGER FRONT",
+    "PASSENGER REAR",
+    "EXTRA",
   ] as const,
+
+  /** All vehicle grid sides (step 4). */
+  get selectedVehiclePhotoSlots(): string[] {
+    return [...this.vehiclePhotoSlots];
+  },
+
+  /**
+   * Damage strip slots for step 3 when Tyres and/or Alloys is DAMAGE; empty if both OK.
+   */
+  damagePhotoSlotsFor(tyreDamage: boolean, alloyDamage: boolean): string[] {
+    if (!tyreDamage && !alloyDamage) return [];
+    return [...this.damagePhotoSlots];
+  },
+
+  get selectedDamagePhotoSlots(): string[] {
+    return this.damagePhotoSlotsFor(this.tyreDamage, this.alloyDamage);
+  },
 };

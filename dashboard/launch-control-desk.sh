@@ -6,10 +6,13 @@
 set +e
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 PORT="${DASHBOARD_PORT:-3939}"
+# Prefer localhost for reliability. Optional branded domain only if it already works.
+DOMAIN="${DASHBOARD_DOMAIN-}"
+if [[ -z "${DASHBOARD_DOMAIN+x}" ]]; then
+  # Unset → try branded name; empty string → force localhost only
+  DOMAIN="testsuite.appdesign.ie"
+fi
 URL="http://127.0.0.1:${PORT}"
-# Address shown in the browser. /etc/hosts maps it to 127.0.0.1 on this Mac;
-# setup-local-domain.sh also forwards port 80 so no ":3939" is needed.
-DOMAIN="${DASHBOARD_DOMAIN:-testsuite.appdesign.ie}"
 LOG="/tmp/automation-control-desk.log"
 PID_FILE="/tmp/automation-control-desk.pid"
 
@@ -53,13 +56,22 @@ free_port() {
 
 start_server() {
   cd "$ROOT" || exit 1
-  # Avoid auto-open from server.js when we open explicitly below
+  : >>"$LOG"
+  # Detach fully so quitting Terminal / Finder launcher cannot kill Node
   nohup env DASHBOARD_NO_OPEN=1 node dashboard/server.js >>"$LOG" 2>&1 &
   echo $! >"$PID_FILE"
+  disown $! 2>/dev/null || true
   for _ in $(seq 1 50); do
-    is_up && break
+    if has_setup_api; then
+      return 0
+    fi
+    if ! kill -0 "$(cat "$PID_FILE" 2>/dev/null)" 2>/dev/null; then
+      echo "Node exited during startup" >>"$LOG"
+      return 1
+    fi
     sleep 0.2
   done
+  return 1
 }
 
 NEED_START=0

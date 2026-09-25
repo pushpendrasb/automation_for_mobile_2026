@@ -3,6 +3,10 @@ const path = require('path');
 /**
  * Per-app project metadata used by WDIO config + HTML reports.
  * Specs are TypeScript; WDIO loads them via tsx.
+ *
+ * HTML reports use the shared App Design brand (logo + appdesign.ie footer)
+ * from framework/utils/reportBrand.js — same layout as VetPortal
+ * (framework/utils/brandedReport.js). Set REPORT_BRAND=off to disable.
  */
 const rootDir = __dirname;
 
@@ -20,6 +24,7 @@ module.exports = {
   catalogPath: path.join(rootDir, 'catalog', 'testCasesCatalog.js'),
   reportsDir: path.join(rootDir, 'reports'),
   screenshotsDir: path.join(rootDir, 'screenshots'),
+  /** Latest HTML/JSON basename; branded like VetPortal via shared reportBrand. */
   reportBaseName: 'appraiseeie-report',
   junitFile: 'appraiseeie-junit.xml',
 

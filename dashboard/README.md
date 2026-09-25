@@ -6,10 +6,10 @@ All of these still work — use whichever you prefer:
 
 | Way | Command / action |
 |-----|------------------|
-| **Terminal (kept)** | `npm run dashboard` |
+| **Click app (recommended)** | Double-click **`Control Desk.app`** or **`Open Control Desk.command`** — starts the server if needed + opens the browser |
+| **Terminal** | `npm run dashboard` |
 | **Short aliases** | `npm start` or `npm run desk` |
-| **Click app (optional)** | Double-click **`Control Desk.app`** — starts server if needed + opens browser |
-| **URL / bookmark** | **http://testsuite.appdesign.ie:3939** — needs `127.0.0.1 testsuite.appdesign.ie` in `/etc/hosts` on this Mac (else **http://127.0.0.1:3939**). Set `DASHBOARD_DOMAIN=` (empty) to always use 127.0.0.1. |
+| **`.webloc` bookmark** | Opens **http://testsuite.appdesign.ie:3939/** only — does **not** start the server. If you see **ERR_CONNECTION_REFUSED**, the Node process is not running: use **Control Desk.app** or `npm run dashboard` first. Browser Reload never starts the server. |
 
 `npm run dashboard` is unchanged and fully supported.
 

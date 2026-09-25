@@ -1,5 +1,7 @@
 /**
  * Test catalog for Appraisee IE HTML reports.
+ *
+ * Optional `npmScript`: package.json script to run that case alone (Control Desk / README).
  */
 
 /** @type {Array<Record<string, unknown>>} */
@@ -155,6 +157,7 @@ const ALL_TEST_CASES = [
     caseId: 'AP-CA-P01',
     module: 'Create Appraisal',
     type: 'positive',
+    npmScript: 'test:ios:appraisal:success',
     title: 'Create appraisal through all four TradeIn steps',
     understanding:
       'From side menu open CREATE NEW APPRAISAL, fill mandatory * fields (name, email, plate, mileage, tax), set tyre/alloy damage, upload photos, SAVE.',
@@ -174,6 +177,7 @@ const ALL_TEST_CASES = [
     caseId: 'AP-CA-N01',
     module: 'Create Appraisal',
     type: 'negative',
+    npmScript: 'test:ios:appraisal:failure',
     title: 'same registration on Vehicle Required and Trade In fails at submission',
     understanding:
       'Vehicle Photos is page 4/4 of Create Appraisal. Using the same registration on Vehicle Required and Vehicle Trade In must make the app reject SAVE — this is a negative test, so the expected error is the pass condition, not a failure.',
@@ -188,6 +192,28 @@ const ALL_TEST_CASES = [
       "SAVE is rejected on Vehicle Photos (page 4) — app shows \"Registration Number of Vehicle Required and Vehicle Trade In can't be the same\"",
     passWhen: 'SAVE rejected — error captured, test stops immediately without further interaction',
     failWhen: 'SAVE unexpectedly succeeded with a duplicate registration',
+  },
+  {
+    caseId: 'AP-HI-P01',
+    module: 'Appraisals History',
+    type: 'positive',
+    npmScript: 'test:ios:history:screen',
+    title: 'Open a random history card on My Appraisals and All Appraisals',
+    understanding:
+      'Side menu APPRAISALS HISTORY opens HistoryViewController. My Appraisals and All Appraisals each show detail cards. On each tab, open a random card from the first five, walk Vehicle Required, Vehicle Trade In, Vehicle Damage, and Vehicle Photos, scrolling each page so its data is on screen, then go back.',
+    steps: [
+      'Sign in and reach home',
+      'Side menu → APPRAISALS HISTORY',
+      'Tap Skip if the history tutorial appears',
+      'My Appraisals — tap a random card from positions 1–5',
+      'On the detail screen open all 4 tabs and scroll each page',
+      'Back to the list',
+      'All Appraisals — tap a random card from positions 1–5',
+      'Open all 4 detail tabs, scroll each page, then Back',
+    ],
+    expected: 'Both history tabs open a card and show all four detail pages',
+    passWhen: 'Required, Trade In, Damage, and Photos are opened and scrolled on both cards, then Back returns to history',
+    failWhen: 'Tabs missing, no cards in the first five, or a detail page does not open',
   },
 ];
 

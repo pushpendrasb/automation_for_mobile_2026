@@ -127,11 +127,28 @@
           <p class="status-label">Devices</p>
           <p class="status-value" id="deviceSummary">Checking…</p>
           <p class="status-sub" id="deviceSub"></p>
+          <p class="device-selected muted" id="deviceSelected">
+            Open a project to choose which phone tests use
+          </p>
+          <div class="device-pickers" id="devicePickers">
+            <label class="device-picker">
+              <span>iOS test device</span>
+              <select id="selIosDevice" disabled>
+                <option value="">— select project first —</option>
+              </select>
+            </label>
+            <label class="device-picker">
+              <span>Android test device</span>
+              <select id="selAndroidDevice" disabled>
+                <option value="">— select project first —</option>
+              </select>
+            </label>
+          </div>
           <button type="button" class="btn btn-ghost btn-tiny" id="btnDevicesRefresh">
             Refresh devices
           </button>
-          <button type="button" class="btn btn-ghost btn-tiny" id="btnDeviceUpdateUdid">
-            Use connected iPhone
+          <button type="button" class="btn btn-primary btn-tiny" id="btnApplyDevice" disabled>
+            Use selected device
           </button>
         </div>
       </div>

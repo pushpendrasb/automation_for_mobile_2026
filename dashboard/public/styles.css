@@ -287,6 +287,111 @@ body.theme-dark .status-icon {
   color: var(--muted);
 }
 
+.device-selected {
+  margin: 0 0 0.55rem;
+  font-size: 0.78rem;
+  line-height: 1.35;
+}
+
+.device-pickers {
+  display: grid;
+  gap: 0.45rem;
+  margin: 0 0 0.65rem;
+}
+
+.device-picker {
+  display: grid;
+  gap: 0.2rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.device-picker select {
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-transform: none;
+  letter-spacing: normal;
+  color: var(--ink);
+  background: var(--card-bg);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 0.45rem 0.55rem;
+  max-width: 100%;
+}
+
+.device-picker select:disabled {
+  opacity: 0.55;
+}
+
+#btnApplyDevice.is-saving {
+  opacity: 0.9;
+  pointer-events: none;
+  animation: deviceBtnPulse 0.7s ease-in-out infinite;
+}
+
+#btnApplyDevice.is-saved {
+  background: linear-gradient(135deg, #15803d, #22c55e);
+  border-color: transparent;
+  color: #fff;
+  animation: deviceBtnPop 0.45s ease;
+}
+
+#btnApplyDevice.is-failed {
+  background: linear-gradient(135deg, #b91c1c, #ef4444);
+  border-color: transparent;
+  color: #fff;
+  animation: deviceBtnPop 0.45s ease;
+}
+
+.device-selected.is-flash-ok {
+  color: #15803d;
+  font-weight: 700;
+  animation: deviceFlashOk 0.9s ease;
+}
+
+.device-selected.is-flash-fail {
+  color: #b91c1c;
+  font-weight: 700;
+  animation: deviceFlashOk 0.9s ease;
+}
+
+@keyframes deviceBtnPulse {
+  0%,
+  100% {
+    transform: scale(1);
+    filter: brightness(1);
+  }
+  50% {
+    transform: scale(0.97);
+    filter: brightness(1.08);
+  }
+}
+
+@keyframes deviceBtnPop {
+  0% {
+    transform: scale(0.92);
+  }
+  55% {
+    transform: scale(1.06);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+@keyframes deviceFlashOk {
+  0% {
+    background: color-mix(in srgb, #22c55e 28%, transparent);
+  }
+  100% {
+    background: transparent;
+  }
+}
+
 .btn {
   appearance: none;
   border: 1px solid var(--line);
@@ -663,6 +768,23 @@ body.theme-dark .setup-note {
   transform: translateY(-4px);
   border-color: color-mix(in srgb, var(--card-mid) 45%, var(--line));
   box-shadow: 0 18px 44px color-mix(in srgb, var(--card-ink) 18%, transparent);
+}
+
+.project-card.is-opening {
+  opacity: 0.75;
+  pointer-events: none;
+}
+
+.project-card.is-opening::after {
+  content: "Opening…";
+  position: absolute;
+  inset: auto 0.85rem 0.85rem auto;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--accent);
+  z-index: 2;
 }
 
 .project-card-art {
@@ -1339,6 +1461,178 @@ body.theme-dark .btn-run.is-busy {
 .log-panel.is-live {
   outline: 2px solid color-mix(in srgb, var(--accent) 35%, transparent);
   outline-offset: 2px;
+}
+
+.script-row.has-photo-slots {
+  flex-wrap: wrap;
+  align-items: flex-start;
+}
+
+.script-row.has-photo-slots .btn-run {
+  margin-left: auto;
+}
+
+.script-row.has-photo-slots.is-config-open {
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--line));
+  background: color-mix(in srgb, var(--accent) 6%, var(--card-bg));
+}
+
+.appraisal-success-teaser {
+  flex: 1 0 100%;
+  margin-top: 0.5rem;
+  padding: 0.75rem 0.85rem;
+  border-radius: 12px;
+  border: 1px dashed var(--line);
+  background: color-mix(in srgb, var(--panel) 55%, transparent);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.65rem 1rem;
+}
+
+.appraisal-success-teaser p {
+  margin: 0;
+  flex: 1 1 12rem;
+  font-size: 0.82rem;
+  line-height: 1.45;
+  color: var(--muted);
+}
+
+.appraisal-success-options {
+  flex: 1 0 100%;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.85rem;
+  margin-top: 0.65rem;
+}
+
+@media (min-width: 720px) {
+  .appraisal-success-options {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .appraisal-success-options .btn-hide-appraisal-options {
+    grid-column: 1 / -1;
+  }
+}
+
+.appraisal-panel {
+  padding: 0.85rem 0.9rem;
+  border-radius: 14px;
+  border: 1px solid var(--line);
+  background: color-mix(in srgb, var(--panel) 65%, var(--card-bg));
+}
+
+.appraisal-panel--tyre {
+  border-color: color-mix(in srgb, var(--accent-2) 35%, var(--line));
+}
+
+.appraisal-panel--vehicle {
+  border-color: color-mix(in srgb, var(--accent) 30%, var(--line));
+}
+
+.appraisal-panel-title {
+  margin: 0 0 0.35rem;
+  font-size: 0.92rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.appraisal-panel-intro {
+  margin: 0 0 0.75rem;
+  font-size: 0.8rem;
+  line-height: 1.45;
+  color: var(--muted);
+}
+
+.photo-slots--nested {
+  margin-top: 0.35rem;
+  padding-top: 0.55rem;
+  border-top: 1px solid var(--line);
+}
+
+.photo-slot--emph {
+  font-weight: 600;
+}
+
+.vehicle-slots-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+@media (min-width: 480px) {
+  .vehicle-slots-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+.btn-hide-appraisal-options {
+  justify-self: start;
+}
+
+.photo-slots-subtitle {
+  margin: 0 0 0.35rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.damage-toggles {
+  border-top: none;
+  padding-top: 0;
+  margin-top: 0;
+}
+
+.damage-toggle-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem 1.5rem;
+}
+
+.damage-slots-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.photo-slots {
+  flex: 1 0 100%;
+  margin-top: 0.35rem;
+  padding-top: 0.7rem;
+  border-top: 1px solid var(--line);
+}
+
+.photo-slots-hint {
+  margin: 0 0 0.65rem;
+  font-size: 0.82rem;
+  line-height: 1.4;
+  color: var(--muted);
+}
+
+.photo-slots-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.45rem 0.75rem;
+}
+
+.photo-slot {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.88rem;
+  cursor: pointer;
+}
+
+.photo-slot input {
+  width: 1rem;
+  height: 1rem;
+  accent-color: var(--accent);
+}
+
+.photo-slots-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  margin-top: 0.7rem;
 }
 
 .script-row .left {

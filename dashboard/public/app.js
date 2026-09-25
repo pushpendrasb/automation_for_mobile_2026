@@ -26,8 +26,11 @@
     btnTheme: $('btnTheme'),
     deviceSummary: $('deviceSummary'),
     deviceSub: $('deviceSub'),
+    deviceSelected: $('deviceSelected'),
+    selIosDevice: $('selIosDevice'),
+    selAndroidDevice: $('selAndroidDevice'),
     btnDevicesRefresh: $('btnDevicesRefresh'),
-    btnDeviceUpdateUdid: $('btnDeviceUpdateUdid'),
+    btnApplyDevice: $('btnApplyDevice'),
     summaryValue: $('summaryValue'),
     summarySub: $('summarySub'),
     btnSummaryReport: $('btnSummaryReport'),
@@ -444,29 +447,132 @@ function escapeHtml(s) {
     await refreshAppium();
   }
 
+  /** Last devices payload — used to fill pickers without an extra round-trip. */
+  let lastDevicesPayload = null;
+
+  /**
+   * Fill iOS / Android dropdowns and show which device this project will use.
+   * @param {object} d /api/devices payload
+   */
+  function renderDevicePickers(d) {
+    lastDevicesPayload = d;
+    const iosSel = els.selIosDevice;
+    const andSel = els.selAndroidDevice;
+    const applyBtn = els.btnApplyDevice;
+    if (!iosSel || !andSel) return;
+
+    const hasProject = Boolean(selectedProjectId);
+    iosSel.disabled = !hasProject;
+    andSel.disabled = !hasProject;
+    if (applyBtn) applyBtn.disabled = !hasProject;
+
+    const iosOnline = d?.ios?.devices || [];
+    const iosOffline = d?.ios?.offline || [];
+    const configuredIos = d?.ios?.configuredUdid || '';
+    const androidOnline = d?.android?.devices || [];
+    const configuredAndroid = d?.android?.configuredId || '';
+
+    iosSel.innerHTML = '';
+    if (!hasProject) {
+      iosSel.innerHTML = '<option value="">— open a project first —</option>';
+    } else if (!iosOnline.length && !iosOffline.length) {
+      iosSel.innerHTML = '<option value="">No iPhones detected</option>';
+    } else {
+      const opt0 = document.createElement('option');
+      opt0.value = '';
+      opt0.textContent = '— choose iPhone for this project —';
+      iosSel.appendChild(opt0);
+      for (const x of iosOnline) {
+        const opt = document.createElement('option');
+        opt.value = x.udid;
+        opt.textContent = `${x.name}${x.version ? ` (${x.version})` : ''} · connected${
+          x.transport ? ` · ${x.transport}` : ''
+        }`;
+        if (x.udid === configuredIos) opt.selected = true;
+        iosSel.appendChild(opt);
+      }
+      for (const x of iosOffline) {
+        const opt = document.createElement('option');
+        opt.value = x.udid;
+        opt.textContent = `${x.name} · offline`;
+        opt.disabled = true;
+        if (x.udid === configuredIos) {
+          opt.selected = true;
+          opt.textContent += ' (saved in .env)';
+          opt.disabled = false;
+        }
+        iosSel.appendChild(opt);
+      }
+    }
+
+    andSel.innerHTML = '';
+    if (!hasProject) {
+      andSel.innerHTML = '<option value="">— open a project first —</option>';
+    } else if (!androidOnline.length) {
+      andSel.innerHTML = '<option value="">No Android devices</option>';
+    } else {
+      const opt0 = document.createElement('option');
+      opt0.value = '';
+      opt0.textContent = '— choose Android for this project —';
+      andSel.appendChild(opt0);
+      for (const x of androidOnline) {
+        const opt = document.createElement('option');
+        opt.value = x.id;
+        opt.textContent = `${x.id} · ${x.state || 'device'}`;
+        if (x.id === configuredAndroid) opt.selected = true;
+        andSel.appendChild(opt);
+      }
+    }
+
+    if (els.deviceSelected) {
+      if (!hasProject) {
+        els.deviceSelected.textContent =
+          'Open a project, then pick which phone tests should use';
+      } else {
+        const iosName =
+          iosOnline.find((x) => x.udid === configuredIos)?.name ||
+          iosOffline.find((x) => x.udid === configuredIos)?.name ||
+          (configuredIos ? configuredIos.slice(0, 12) + '…' : 'not set');
+        const andName = configuredAndroid || 'not set';
+        els.deviceSelected.textContent = `Selected for ${selectedProjectId}: iOS ${iosName} · Android ${andName}`;
+      }
+    }
+  }
+
   async function refreshDevices(projectId) {
     try {
-      const q = projectId
-        ? `?projectId=${encodeURIComponent(projectId)}`
-        : '';
-      const d = await api(`/api/devices${q}`);
+      const q = new URLSearchParams();
+      if (projectId) q.set('projectId', projectId);
+      q.set('refresh', '1');
+      const d = await api(`/api/devices?${q}`);
       els.deviceSummary.textContent = d.summary || '—';
       const bits = [];
       if (d.ios?.devices?.length) {
         bits.push(
-          d.ios.devices
-            .slice(0, 2)
-            .map((x) => x.name)
-            .join(', ')
+          'iOS: ' +
+            d.ios.devices
+              .slice(0, 3)
+              .map((x) => x.name)
+              .join(', ')
+        );
+      } else if (d.ios?.offline?.length) {
+        bits.push(
+          'iOS offline: ' +
+            d.ios.offline
+              .slice(0, 3)
+              .map((x) => x.name)
+              .join(', ')
         );
       }
       if (d.android?.devices?.length) {
-        bits.push(`${d.android.devices.length} Android`);
+        bits.push(`Android: ${d.android.devices.length} connected`);
       }
       if (d.ios?.configuredUdid && !d.ios.configuredOk) {
-        bits.push('UDID not found');
+        bits.push('Saved iOS UDID is not connected right now');
       }
-      els.deviceSub.textContent = bits.filter(Boolean).join(' · ') || 'Connect a phone / emulator';
+      els.deviceSub.textContent =
+        bits.filter(Boolean).join(' · ') || 'Connect a phone / emulator';
+      renderDevicePickers(d);
     } catch (err) {
       els.deviceSummary.textContent = 'Error';
       els.deviceSub.textContent = String(err.message || err);
@@ -474,72 +580,83 @@ function escapeHtml(s) {
   }
 
   /**
-   * IOS_DEVICE_UDID in a project's .env is device-specific — copying the
-   * same checkout to another Mac means whatever iPhone is plugged into
-   * that machine has a different UDID. Detect the connected device and, on
-   * confirmation, write it into .env so this project runs there without
-   * hand-editing the file.
+   * Save the dropdown selection into the open project's .env so Appium
+   * targets that device on the next test run.
    */
-  async function updateProjectUdid() {
+  async function applySelectedDevices() {
     if (!selectedProjectId) {
-      alert('Select a project first.');
+      alert('Open a project first, then choose a device.');
       return;
     }
-    let d;
-    try {
-      d = await api(`/api/devices?projectId=${encodeURIComponent(selectedProjectId)}`);
-    } catch (err) {
-      alert(String(err.message || err));
-      return;
-    }
-    const devices = d.ios?.devices || [];
-    if (!devices.length) {
-      alert('No iOS device detected. Connect and unlock the iPhone, then try again.');
+    const iosUdid = els.selIosDevice?.value || '';
+    const androidId = els.selAndroidDevice?.value || '';
+    if (!iosUdid && !androidId) {
+      alert('Choose an iOS and/or Android device from the lists.');
       return;
     }
 
-    let device = devices[0];
-    if (devices.length > 1) {
-      const listing = devices
-        .map((x, i) => `${i + 1}. ${x.name} (${x.version}) — ${x.udid}`)
-        .join('\n');
-      const pick = prompt(
-        `Multiple iOS devices detected:\n${listing}\n\nEnter a number:`,
-        '1'
-      );
-      const idx = Number(pick) - 1;
-      if (!pick || Number.isNaN(idx) || !devices[idx]) return;
-      device = devices[idx];
+    const btn = els.btnApplyDevice;
+    const prevLabel = btn?.textContent || 'Use selected device';
+    if (btn) {
+      btn.disabled = true;
+      btn.classList.remove('is-saved', 'is-failed');
+      btn.classList.add('is-saving');
+      btn.textContent = 'Saving…';
     }
-
-    const current = d.ios?.configuredUdid || '';
-    if (current === device.udid) {
-      alert(`Already set to this device (${device.name}).`);
-      return;
-    }
-
-    const ok = confirm(
-      `Change the iOS device UDID for this project?\n\n` +
-        `Device: ${device.name} (${device.version})\n` +
-        `New UDID: ${device.udid}\n` +
-        (current ? `Current: ${current}` : 'Current: not set')
-    );
-    if (!ok) return;
+    els.deviceSelected?.classList.remove('is-flash-ok', 'is-flash-fail');
 
     try {
-      await api(
-        `/api/projects/${encodeURIComponent(selectedProjectId)}/env/udid`,
-        { method: 'POST', body: JSON.stringify({ udid: device.udid }) }
-      );
+      if (iosUdid) {
+        await api(`/api/projects/${encodeURIComponent(selectedProjectId)}/env/device`, {
+          method: 'POST',
+          body: JSON.stringify({ platform: 'ios', udid: iosUdid }),
+        });
+      }
+      if (androidId) {
+        await api(`/api/projects/${encodeURIComponent(selectedProjectId)}/env/device`, {
+          method: 'POST',
+          body: JSON.stringify({ platform: 'android', deviceId: androidId }),
+        });
+      }
+      const iosLabel =
+        els.selIosDevice?.selectedOptions?.[0]?.textContent || iosUdid || '—';
+      const andLabel =
+        els.selAndroidDevice?.selectedOptions?.[0]?.textContent || androidId || '—';
       setRunAck({
-        title: 'Project UDID updated',
-        detail: `${device.name} — ${device.udid}`,
-        state: 'idle',
+        title: 'Test device saved',
+        detail: `${selectedProjectId} · iOS: ${iosLabel} · Android: ${andLabel}`,
+        state: 'passed',
         show: true,
       });
+      if (btn) {
+        btn.classList.remove('is-saving');
+        btn.classList.add('is-saved');
+        btn.textContent = 'Saved ✓';
+      }
+      els.deviceSelected?.classList.add('is-flash-ok');
       await refreshDevices(selectedProjectId);
+      window.setTimeout(() => {
+        if (!btn) return;
+        btn.classList.remove('is-saved');
+        btn.textContent = prevLabel;
+        btn.disabled = !selectedProjectId;
+        els.deviceSelected?.classList.remove('is-flash-ok');
+      }, 1800);
     } catch (err) {
+      if (btn) {
+        btn.classList.remove('is-saving');
+        btn.classList.add('is-failed');
+        btn.textContent = 'Failed';
+        btn.disabled = false;
+      }
+      els.deviceSelected?.classList.add('is-flash-fail');
       alert(String(err.message || err));
+      window.setTimeout(() => {
+        if (!btn) return;
+        btn.classList.remove('is-failed');
+        btn.textContent = prevLabel;
+        els.deviceSelected?.classList.remove('is-flash-fail');
+      }, 1800);
     }
   }
 
@@ -836,7 +953,9 @@ function escapeHtml(s) {
       cb.type = 'checkbox';
       cb.className = 'script-check';
       cb.value = s.name;
-      cb.addEventListener('change', updateRunSelectedState);
+      cb.addEventListener('change', () => {
+        updateRunSelectedState();
+      });
       left.appendChild(cb);
     }
     const info = document.createElement('div');
@@ -1172,6 +1291,7 @@ function escapeHtml(s) {
       const btn = document.createElement('button');
       btn.type = 'button';
       btn.className = 'project-card';
+      btn.dataset.projectId = p.id;
       if (p.id === selectedProjectId) btn.classList.add('active');
       btn.style.setProperty('--card-ink', theme.ink);
       btn.style.setProperty('--card-mid', theme.mid);
@@ -1297,50 +1417,66 @@ function escapeHtml(s) {
   async function openProject(id) {
     selectedProjectId = id;
     localStorage.setItem(LS_PROJECT, id);
-    const data = await api(`/api/projects/${encodeURIComponent(id)}`);
-    const p = data.project;
-    els.projectEyebrow.textContent = p.id;
-    els.projectTitle.textContent = p.displayName;
-    els.projectMeta.textContent = [
-      p.bundleId && `iOS ${p.bundleId}`,
-      p.appPackage && `Android ${p.appPackage}`,
-      `${(data.scripts || []).length} scripts`,
-      `${(data.reports || []).length} reports`,
-    ]
-      .filter(Boolean)
-      .join(' · ');
+    document.querySelectorAll('.project-card').forEach((card) => {
+      const isTarget = card.dataset.projectId === id;
+      card.classList.toggle('is-opening', isTarget);
+      card.disabled = true;
+    });
+    try {
+      const data = await api(`/api/projects/${encodeURIComponent(id)}`);
+      const p = data.project;
+      if (!p) throw new Error(`Project "${id}" could not be loaded`);
+      els.projectEyebrow.textContent = p.id;
+      els.projectTitle.textContent = p.displayName;
+      els.projectMeta.textContent = [
+        p.bundleId && `iOS ${p.bundleId}`,
+        p.appPackage && `Android ${p.appPackage}`,
+        `${(data.scripts || []).length} scripts`,
+        `${(data.reports || []).length} reports`,
+      ]
+        .filter(Boolean)
+        .join(' · ');
 
-    renderEnv(data.env);
-    renderSuites(data.suites || [], id);
-    refreshDevices(id);
+      renderEnv(data.env);
+      renderSuites(data.suites || [], id);
+      // Devices load in the background so opening the project stays fast
+      refreshDevices(id);
 
-    /** Split scripts: iOS left column, Android right, rest below. */
-    const ios = [];
-    const android = [];
-    const other = [];
-    for (const s of data.scripts || []) {
-      const bucket = platformBucket(s.group);
-      if (bucket === 'ios') ios.push(s);
-      else if (bucket === 'android') android.push(s);
-      else other.push(s);
+      /** Split scripts: iOS left column, Android right, rest below. */
+      const ios = [];
+      const android = [];
+      const other = [];
+      for (const s of data.scripts || []) {
+        const bucket = platformBucket(s.group);
+        if (bucket === 'ios') ios.push(s);
+        else if (bucket === 'android') android.push(s);
+        else other.push(s);
+      }
+
+      els.chkSelectAll.checked = false;
+      fillScriptList(els.listIos, ios, id, 'No iOS scripts yet');
+      fillScriptList(els.listAndroid, android, id, 'No Android scripts yet');
+      if (other.length) {
+        els.colOther.hidden = false;
+        fillScriptList(els.listOther, other, id, '');
+        decorateToolRows(els.listOther);
+      } else {
+        els.colOther.hidden = true;
+        els.listOther.innerHTML = '';
+      }
+      updateRunSelectedState();
+      renderReports(data.reports || []);
+
+      document.querySelector('.projects-panel').hidden = true;
+      els.scriptsPanel.hidden = false;
+    } catch (err) {
+      alert(`Could not open ${id}: ${err.message || err}`);
+    } finally {
+      document.querySelectorAll('.project-card').forEach((card) => {
+        card.classList.remove('is-opening');
+        card.disabled = false;
+      });
     }
-
-    els.chkSelectAll.checked = false;
-    fillScriptList(els.listIos, ios, id, 'No iOS scripts yet');
-    fillScriptList(els.listAndroid, android, id, 'No Android scripts yet');
-    if (other.length) {
-      els.colOther.hidden = false;
-      fillScriptList(els.listOther, other, id, '');
-      decorateToolRows(els.listOther);
-    } else {
-      els.colOther.hidden = true;
-      els.listOther.innerHTML = '';
-    }
-    updateRunSelectedState();
-    renderReports(data.reports || []);
-
-    document.querySelector('.projects-panel').hidden = true;
-    els.scriptsPanel.hidden = false;
   }
 
   function showProjects() {
@@ -1389,7 +1525,10 @@ function escapeHtml(s) {
     try {
       const result = await api('/api/run', {
         method: 'POST',
-        body: JSON.stringify({ projectId, script, env }),
+        body: JSON.stringify({
+          projectId,
+          script, env,
+        }),
       });
       if (!result.ok) {
         setRunAck({
@@ -1487,7 +1626,10 @@ function escapeHtml(s) {
     try {
       const result = await api('/api/run/many', {
         method: 'POST',
-        body: JSON.stringify({ projectId: selectedProjectId, scripts, envByScript }),
+        body: JSON.stringify({
+          projectId: selectedProjectId,
+          scripts, envByScript,
+        }),
       });
       if (!result.ok) {
         const reasons = (result.results || []).filter((r) => !r.ok).map((r) => r.error);
@@ -1716,7 +1858,14 @@ function escapeHtml(s) {
   els.btnDevicesRefresh.addEventListener('click', () =>
     refreshDevices(selectedProjectId || '')
   );
-  els.btnDeviceUpdateUdid.addEventListener('click', updateProjectUdid);
+  els.btnApplyDevice?.addEventListener('click', applySelectedDevices);
+  // Changing the dropdown immediately saves for the open project
+  els.selIosDevice?.addEventListener('change', () => {
+    if (selectedProjectId && els.selIosDevice.value) applySelectedDevices();
+  });
+  els.selAndroidDevice?.addEventListener('change', () => {
+    if (selectedProjectId && els.selAndroidDevice.value) applySelectedDevices();
+  });
   els.btnBack.addEventListener('click', showProjects);
   els.btnStopRun.addEventListener('click', stopRun);
   els.btnStopAck?.addEventListener('click', stopRun);
