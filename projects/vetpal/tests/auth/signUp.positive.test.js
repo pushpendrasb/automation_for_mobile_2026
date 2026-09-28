@@ -4,7 +4,8 @@
  *
  * P02 follows Login.js after register:
  *   Default Sign In → Sign Up tab once (never Sign In tab)
- *   → fill form → Sign Up Now → OtpVerifyScreen (wait 20s; type OTP)
+ *   → fill form → Sign Up Now
+ *   → Enter OTP, or Account Already Exists → Cancel → Sign In that email
  *   → Verify OTP → SignUpSuccess Ok
  *   → Sign In Now (already on Sign In — do not tap the Sign In tab)
  *   → otp_status true → OTP again
@@ -34,10 +35,19 @@ describe('Vet-Pal Sign Up — Positive', () => {
     await SignUpPage.fillValidForm();
     await SignUpPage.tapSignUpNow();
 
-    const signedUp = await SignUpPage.isSignUpSuccessful(25000);
-    if (!signedUp) {
+    const outcome = await SignUpPage.waitForSignUpOutcome(25000);
+    if (outcome === 'accountExists') {
+      console.log(
+        `Account already exists for ${signUpData.email} — Cancel, then Sign In with that account`,
+      );
+      await SignUpPage.dismissAccountExistsPopup();
+      const dest = await signInWithSignupCredentials();
+      await landAfterLogin(dest);
+      return;
+    }
+    if (outcome !== 'otp') {
       throw new Error(
-        'Did not reach Enter OTP. Check password + Confirm Password, T&C checkbox, and Sign Up Now. If an Error alert appeared, email/mobile may already be registered — change them in data/signUpData.js',
+        'Did not reach Enter OTP. Check password + Confirm Password, T&C checkbox, and Sign Up Now. If Account Already Exists appeared, Cancel should have been tapped.',
       );
     }
 

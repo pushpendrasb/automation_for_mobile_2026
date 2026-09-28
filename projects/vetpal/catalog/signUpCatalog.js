@@ -25,15 +25,16 @@ const SIGN_UP_TEST_CASES = [
     type: 'positive',
     title: 'Valid Sign Up opens OTP',
     understanding:
-      'Values from data/signUpData.js (email, +91, mobile, matching passwords, T&C) must call register and open Enter OTP.',
+      'Values from data/signUpData.js (email, +91, mobile, matching passwords, T&C) must call register and open Enter OTP. If Account Already Exists is shown, tap Cancel and Sign In with that email account (same +91 mobile and password).',
     steps: [
       'Enter email, +91, mobile, password, confirm',
       'Tick I agree with Terms & Conditions',
       'Tap Sign Up Now',
+      'If Account Already Exists: tap Cancel, then Sign In with that account',
     ],
-    expected: 'OtpVerifyScreen (Enter OTP)',
-    passWhen: 'Enter OTP visible',
-    failWhen: 'Toast/alert, still on Sign Up (duplicate email/mobile — edit signUpData.js)',
+    expected: 'Enter OTP, or Sign In after Cancel on Account Already Exists',
+    passWhen: 'Enter OTP visible, or Home / Create Profile after Sign In',
+    failWhen: 'Still on Sign Up and Account Already Exists was not cancelled',
   },
   {
     caseId: 'VP-SU-N01',

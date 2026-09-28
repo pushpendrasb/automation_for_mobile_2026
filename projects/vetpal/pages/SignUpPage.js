@@ -153,6 +153,11 @@ class SignUpPage {
     await browser.pause(150);
   }
 
+  /**
+   * Type the full local mobile number in one step, same as email.
+   * Country code must already be +91. Example: 9664070794.
+   * @param {string} mobile
+   */
   async enterMobile(mobile) {
     await this.#typeByTestId(TEST_IDS.login.mobile, mobile);
   }
@@ -245,6 +250,66 @@ class SignUpPage {
     } catch {
       return false;
     }
+  }
+
+  /**
+   * AccountExistsPopup after register returns 409
+   * ("Account Already Exists"). Cancel is `alert.cancel`.
+   * @returns {Promise<boolean>}
+   */
+  async isAccountExistsPopupVisible() {
+    if (await ui.firstCaption('Account Already Exists')) {
+      return true;
+    }
+    return Boolean(await ui.firstCaptionContains('already exists'));
+  }
+
+  /**
+   * After Sign Up Now, wait until Enter OTP or the account-exists popup.
+   * @param {number} [timeout=25000]
+   * @returns {Promise<'otp'|'accountExists'|null>}
+   */
+  async waitForSignUpOutcome(timeout = 25000) {
+    let outcome = null;
+    try {
+      await browser.waitUntil(
+        async () => {
+          if (await this.isOnOtpScreen()) {
+            outcome = 'otp';
+            return true;
+          }
+          if (await this.isAccountExistsPopupVisible()) {
+            outcome = 'accountExists';
+            return true;
+          }
+          return false;
+        },
+        { timeout, interval: 300 },
+      );
+    } catch {
+      return null;
+    }
+    return outcome;
+  }
+
+  /**
+   * Close AccountExistsPopup with Cancel. The Sign Up form stays open;
+   * the caller then switches to Sign In for that same email account.
+   */
+  async dismissAccountExistsPopup() {
+    ui.log('Sign Up', 'Account Already Exists — tap Cancel');
+    const tapped = await ui.tapTestId(TEST_IDS.alert.cancel);
+    if (!tapped) {
+      await ui.tapText('Cancel', 5000);
+    }
+    await browser.waitUntil(
+      async () => !(await this.isAccountExistsPopupVisible()),
+      {
+        timeout: 5000,
+        interval: 200,
+        timeoutMsg: 'Account Already Exists popup still visible after Cancel',
+      },
+    );
   }
 
   /**

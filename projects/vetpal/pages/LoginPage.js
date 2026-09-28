@@ -465,6 +465,10 @@ class LoginPage {
     }
   }
 
+  /**
+   * Type the full local mobile number in one step, same as email on Sign Up.
+   * @param {string} mobileNumber
+   */
   async enterMobile(mobileNumber) {
     await this.ensureSignInMode();
     const el = await this.resolveMobileField();
