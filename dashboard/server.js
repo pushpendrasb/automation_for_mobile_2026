@@ -2031,7 +2031,8 @@ const server = http.createServer(async (req, res) => {
     if (method === 'POST' && pathname === '/api/run') {
       const body = await readBody(req);
       const script = String(body.script || '');
-      return json(res, enqueueOrRun(String(body.projectId || ''), script));
+      // body.env = the row's run-input values (e.g. Sign-in email); validated in enqueueOrRun.
+      return json(res, enqueueOrRun(String(body.projectId || ''), script, body.env || {}));
     }
 
     if (method === 'POST' && pathname === '/api/run/many') {

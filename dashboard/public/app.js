@@ -855,15 +855,23 @@ function escapeHtml(s) {
     return t;
   }
 
-  /** localStorage key that remembers a run-input value per project + script. */
-  function runInputStorageKey(projectId, scriptName, key) {
-    return `runInput:${projectId}:${scriptName}:${key}`;
+  /**
+   * Drop run-input values saved by older dashboard versions, so a reload
+   * always starts with empty fields.
+   */
+  function clearSavedRunInputs() {
+    for (let i = localStorage.length - 1; i >= 0; i--) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith('runInput:')) localStorage.removeItem(key);
+    }
   }
 
   /**
    * Render the script's declared run inputs (e.g. signup email / mobile).
    * Blank fields fall back to the project's .env when the script runs.
-   * Secret inputs (passwords) are not saved to localStorage.
+   * Values are not remembered: every page load starts with empty fields.
+   * Fields stay read-only until focused so the browser's saved logins are
+   * not autofilled into them.
    * @param {string} projectId
    * @param {{ name: string, inputs?: Array<{ key: string, label?: string, type?: string,
    *   placeholder?: string, pattern?: string, hint?: string, checkedValue?: string,
@@ -875,8 +883,6 @@ function escapeHtml(s) {
     const wrap = document.createElement('div');
     wrap.className = 'script-inputs';
     for (const def of s.inputs) {
-      const storeKey = runInputStorageKey(projectId, s.name, def.key);
-      const saved = def.secret ? '' : localStorage.getItem(storeKey) || '';
       const label = document.createElement('label');
       const input = document.createElement('input');
       input.dataset.envKey = def.key;
@@ -884,10 +890,6 @@ function escapeHtml(s) {
         label.className = 'script-input script-input-check';
         input.type = 'checkbox';
         input.dataset.checkedValue = def.checkedValue ?? 'true';
-        input.checked = saved === '1';
-        input.addEventListener('change', () =>
-          localStorage.setItem(storeKey, input.checked ? '1' : '')
-        );
         label.append(input, document.createTextNode(def.label || def.key));
       } else {
         label.className = 'script-input';
@@ -897,12 +899,16 @@ function escapeHtml(s) {
         input.placeholder = def.placeholder || '';
         if (def.pattern) input.pattern = def.pattern;
         if (def.hint) input.title = def.hint;
-        input.value = saved;
+        input.value = '';
+        input.name = `${s.name}:${def.key}`;
         input.autocomplete = def.secret ? 'new-password' : 'off';
         input.spellcheck = false;
-        if (!def.secret) {
-          input.addEventListener('input', () => localStorage.setItem(storeKey, input.value.trim()));
-        }
+        input.readOnly = true;
+        const unlock = () => {
+          input.readOnly = false;
+        };
+        input.addEventListener('focus', unlock);
+        input.addEventListener('pointerdown', unlock);
         label.append(caption, input);
       }
       wrap.appendChild(label);
@@ -1911,6 +1917,7 @@ function escapeHtml(s) {
   });
 
   applyTheme(localStorage.getItem(LS_THEME) === 'dark' ? 'dark' : 'light');
+  clearSavedRunInputs();
   setLogMode(logMode);
   // Always start with Setup collapsed; user clicks “Show steps” to expand.
   setSetupCollapsed(true);
