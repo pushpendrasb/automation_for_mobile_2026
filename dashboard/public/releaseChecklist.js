@@ -145,6 +145,17 @@
       `/api/release-checklist?projectId=${encodeURIComponent(projectId)}&env=${encodeURIComponent(env)}`
     );
     if (!data.ok || !data.checklist) {
+      // Drop the previous project's progress so a failed switch (for example
+      // "Unknown project") does not keep showing that project's percentages.
+      checklist = null;
+      els.progressPct.textContent = '—';
+      els.progressSub.textContent = 'Checklist not loaded';
+      els.statusValue.textContent = '—';
+      els.updatedSub.textContent = '';
+      els.platformBars.innerHTML = '';
+      if (els.historyList) {
+        els.historyList.innerHTML = '<p class="muted">No changes yet.</p>';
+      }
       els.sections.innerHTML = `<p class="muted">Could not load checklist: ${escapeHtml(
         data.error || 'unknown error'
       )}</p>`;

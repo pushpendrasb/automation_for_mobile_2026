@@ -20,6 +20,22 @@ is_healthy() {
   /usr/bin/curl -sf -o /dev/null --max-time 2 "$URL/api/setup" 2>/dev/null
 }
 
+# True when the process on this port was started from a checkout that has
+# since been moved or deleted. Node keeps that absolute path in memory, so
+# /api/projects is empty and every release checklist returns "Unknown project".
+server_root_missing() {
+  local root
+  root="$(
+    /usr/bin/curl -sf --max-time 2 "$URL/api/health" 2>/dev/null \
+      | /usr/bin/python3 -c 'import json,sys
+try:
+    print(json.load(sys.stdin).get("root") or "")
+except Exception:
+    print("")' 2>/dev/null || true
+  )"
+  [[ -n "$root" && ! -d "$root/projects" ]]
+}
+
 free_port() {
   local pids
   pids="$(lsof -tiTCP:"$PORT" -sTCP:LISTEN 2>/dev/null || true)"
@@ -43,6 +59,9 @@ open_browser() {
 }
 
 if [[ "${DASHBOARD_FORCE_RESTART:-}" == "1" ]]; then
+  free_port
+elif server_root_missing; then
+  echo "  Dashboard is still bound to a folder that no longer exists — restarting…"
   free_port
 elif is_healthy; then
   echo "  Control Desk already running."

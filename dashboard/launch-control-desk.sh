@@ -38,6 +38,22 @@ has_setup_api() {
   /usr/bin/curl -sf -o /dev/null --max-time 2 "$URL/api/setup" 2>/dev/null
 }
 
+# True when the listening process was started from a checkout that was later
+# moved. It still answers /api/setup, but project lookups (release checklist)
+# all fail with "Unknown project".
+server_root_missing() {
+  local root
+  root="$(
+    /usr/bin/curl -sf --max-time 2 "$URL/api/health" 2>/dev/null \
+      | /usr/bin/python3 -c 'import json,sys
+try:
+    print(json.load(sys.stdin).get("root") or "")
+except Exception:
+    print("")' 2>/dev/null || true
+  )"
+  [[ -n "$root" && ! -d "$root/projects" ]]
+}
+
 free_port() {
   local pids
   pids="$(lsof -tiTCP:"$PORT" -sTCP:LISTEN 2>/dev/null || true)"
@@ -76,6 +92,10 @@ start_server() {
 
 NEED_START=0
 if ! is_up; then
+  NEED_START=1
+elif server_root_missing; then
+  echo "Stale dashboard detected (project folder missing) — restarting…" >>"$LOG"
+  free_port
   NEED_START=1
 elif ! has_setup_api; then
   # Page is up but Setup routes missing → old Node still holding the port
