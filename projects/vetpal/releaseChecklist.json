@@ -1,0 +1,6 @@
+{
+  "disabledSections": [],
+  "disabledItems": [],
+  "demoAutofill": true,
+  "_comment": "demoAutofill shows 'Autofill demo data' buttons on the Release Checklist (per section + all) for demos."
+}

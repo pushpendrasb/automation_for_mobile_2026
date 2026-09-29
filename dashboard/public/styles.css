@@ -2064,6 +2064,7 @@ body.theme-dark .release-brand-logo.brand-logo--light {
 .release-section-bar {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 0.75rem;
   padding-right: 1rem;
 }

@@ -14,6 +14,7 @@ const {
   UPLOAD_STATUSES,
   itemSectionMap,
 } = require('./template');
+const { demoItem, demoUpload, DEMO_OWNERS } = require('./demoAutofill');
 
 const SECTION_MAP = itemSectionMap();
 
@@ -47,12 +48,21 @@ function createReleaseChecklistStore(dataDir) {
   }
 
   /**
+   * Overrides when the project file is missing or not valid JSON.
+   * demoAutofill stays false unless the file sets it to boolean true.
+   */
+  function emptyOverrides() {
+    return { disabledSections: [], disabledItems: [], demoAutofill: false };
+  }
+
+  /**
    * Optional project overrides from projects/<id>/releaseChecklist.json
    * @param {string} projectRoot
+   * @returns {{ disabledSections: string[], disabledItems: string[], demoAutofill: boolean }}
    */
   function readProjectOverrides(projectRoot) {
     const p = path.join(projectRoot, 'releaseChecklist.json');
-    if (!fs.existsSync(p)) return { disabledSections: [], disabledItems: [] };
+    if (!fs.existsSync(p)) return emptyOverrides();
     try {
       const raw = JSON.parse(fs.readFileSync(p, 'utf8'));
       return {
@@ -62,9 +72,10 @@ function createReleaseChecklistStore(dataDir) {
         disabledItems: Array.isArray(raw.disabledItems)
           ? raw.disabledItems.map(String)
           : [],
+        demoAutofill: raw.demoAutofill === true,
       };
     } catch {
-      return { disabledSections: [], disabledItems: [] };
+      return emptyOverrides();
     }
   }
 
@@ -218,6 +229,7 @@ function createReleaseChecklistStore(dataDir) {
     delete toWrite.sections;
     delete toWrite.releaseStatus;
     delete toWrite.template;
+    delete toWrite.demoAutofill;
     fs.writeFileSync(
       checklistPath(doc.projectId, doc.environment),
       JSON.stringify(toWrite, null, 2),
@@ -294,6 +306,8 @@ function createReleaseChecklistStore(dataDir) {
     });
     return {
       ...doc,
+      /** True only when projects/<id>/releaseChecklist.json sets demoAutofill: true. */
+      demoAutofill: overrides.demoAutofill === true,
       progress,
       releaseStatus: releaseStatusOf(doc, progress),
       sections,
@@ -303,6 +317,91 @@ function createReleaseChecklistStore(dataDir) {
         uploadStatuses: UPLOAD_STATUSES,
       },
     };
+  }
+
+  /**
+   * Replace one section, or every section, with demo answers.
+   * Refuses projects that have not opted in via demoAutofill.
+   * Disabled sections and items stay N/A.
+   * @param {string} projectId
+   * @param {string} env
+   * @param {string} sectionId section id, or "all"
+   * @param {{ projectRoot?: string, displayName?: string, user?: string }} [opts]
+   */
+  function applyDemoAutofill(projectId, env, sectionId, opts = {}) {
+    const overrides = readProjectOverrides(opts.projectRoot || '');
+    if (!overrides.demoAutofill) {
+      return { ok: false, error: 'Demo autofill is not enabled for this project' };
+    }
+    const scope = String(sectionId || 'all');
+    const sections =
+      scope === 'all' ? SECTIONS : SECTIONS.filter((section) => section.id === scope);
+    if (!sections.length) {
+      return { ok: false, error: `Unknown section: ${scope}` };
+    }
+
+    const doc = load(projectId, env, opts);
+    const user = String(opts.user || 'User').slice(0, 80);
+    const now = new Date().toISOString();
+    let filled = 0;
+
+    for (const section of sections) {
+      const sectionDisabled = overrides.disabledSections.includes(section.id);
+      if (sectionDisabled) continue;
+      for (const item of section.items) {
+        if (overrides.disabledItems.includes(item.id)) continue;
+        const demo = demoItem(item, section);
+        doc.items[item.id] = {
+          status: demo.status,
+          remarks: demo.remarks,
+          evidence: demo.evidence,
+          responsible: demo.responsible,
+          updatedAt: now,
+          updatedBy: user,
+        };
+        filled += 1;
+      }
+      if (section.upload && doc.uploads?.[section.upload]) {
+        const prev = doc.uploads[section.upload];
+        doc.uploads[section.upload] = {
+          ...prev,
+          ...demoUpload(section.upload),
+          fileName: prev.fileName || '',
+          storedAs: prev.storedAs || '',
+        };
+      }
+    }
+
+    if (scope === 'all') {
+      if (!doc.releaseVersion || doc.releaseVersion === 'v1.0.0') {
+        doc.releaseVersion = 'v1.4.0';
+      }
+      doc.owners = { ...emptyOwners(), ...(doc.owners || {}) };
+      for (const key of Object.keys(emptyOwners())) {
+        if (!String(doc.owners[key] || '').trim()) {
+          doc.owners[key] = DEMO_OWNERS[key] || '';
+        }
+      }
+    }
+
+    const title =
+      scope === 'all'
+        ? 'Demo autofill (all sections)'
+        : `Demo autofill (${sections[0].title})`;
+    doc.history.unshift({
+      at: now,
+      user,
+      itemId: `demo-autofill:${scope}`,
+      itemLabel: title,
+      previousStatus: '—',
+      newStatus: 'filled',
+      remarks: `Filled ${filled} items with demo data for a walkthrough. Not a real release sign-off.`,
+    });
+    doc.history = doc.history.slice(0, 200);
+    doc.updatedAt = now;
+    doc.updatedBy = user;
+    save(doc);
+    return { ok: true, checklist: load(projectId, env, opts), filled };
   }
 
   /**
@@ -522,6 +621,7 @@ function createReleaseChecklistStore(dataDir) {
     updateUpload,
     attachUpload,
     reset,
+    applyDemoAutofill,
     attachmentPath,
     computeProgress,
     SECTIONS,

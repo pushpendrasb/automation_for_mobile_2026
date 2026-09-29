@@ -162,6 +162,28 @@ function createReleaseChecklistApi(deps) {
       return true;
     }
 
+    // POST demo autofill (opt-in projects only; section=all or a section id)
+    if (method === 'POST' && pathname === '/api/release-checklist/demo-autofill') {
+      const body = await deps.readBody(req);
+      const id = body.projectId || projectId;
+      const check = requireProject(id);
+      if (!check.ok) {
+        deps.json(res, check, 404);
+        return true;
+      }
+      const result = store.applyDemoAutofill(
+        id,
+        body.env || env,
+        body.section || 'all',
+        {
+          ...projectOpts(id),
+          user: body.user || body.updatedBy,
+        }
+      );
+      deps.json(res, result, result.ok ? 200 : 400);
+      return true;
+    }
+
     // POST reset
     if (method === 'POST' && pathname === '/api/release-checklist/reset') {
       const body = await deps.readBody(req);

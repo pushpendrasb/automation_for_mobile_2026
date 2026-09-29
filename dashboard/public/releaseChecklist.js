@@ -54,6 +54,7 @@
     historyList: document.getElementById('releaseHistoryList'),
     btnDownload: document.getElementById('btnReleaseDownload'),
     downloadPanel: document.getElementById('releaseDownloadPanel'),
+    btnDemo: document.getElementById('btnReleaseDemo'),
     btnReset: document.getElementById('btnReleaseReset'),
   };
 
@@ -156,6 +157,7 @@
       if (els.historyList) {
         els.historyList.innerHTML = '<p class="muted">No changes yet.</p>';
       }
+      if (els.btnDemo) els.btnDemo.hidden = true;
       els.sections.innerHTML = `<p class="muted">Could not load checklist: ${escapeHtml(
         data.error || 'unknown error'
       )}</p>`;
@@ -167,6 +169,7 @@
 
   function render() {
     if (!checklist) return;
+    if (els.btnDemo) els.btnDemo.hidden = checklist.demoAutofill !== true;
     els.inpVersion.value = checklist.releaseVersion || '';
     if (!els.inpUser.value) {
       els.inpUser.value = localStorage.getItem('desk.release.user') || checklist.updatedBy || '';
@@ -384,6 +387,13 @@
           </div>
           <span class="release-section-pct">${escapeHtml(pct)} Complete</span>
         </button>
+        ${
+          checklist.demoAutofill
+            ? `<button type="button" class="btn btn-ghost btn-tiny" data-demo-section="${escapeHtml(
+                section.id
+              )}">Autofill demo data</button>`
+            : ''
+        }
         <button type="button" class="btn btn-ghost btn-tiny" data-section-pdf="${escapeHtml(
           section.id
         )}">Download PDF</button>
@@ -396,6 +406,13 @@
   }
 
   function bindSectionEvents() {
+    els.sections.querySelectorAll('[data-demo-section]').forEach((btn) => {
+      btn.addEventListener('click', (ev) => {
+        ev.stopPropagation();
+        autofillDemo(btn.getAttribute('data-demo-section'));
+      });
+    });
+
     els.sections.querySelectorAll('[data-section-pdf]').forEach((btn) => {
       btn.addEventListener('click', (ev) => {
         ev.stopPropagation();
@@ -658,6 +675,42 @@
       if (els.downloadPanel) els.downloadPanel.hidden = true;
     }
   });
+
+  /**
+   * Fill one section, or every section, with server-side demo answers.
+   * Shown only when the project opts in with demoAutofill.
+   * @param {string} sectionId section id, or "all"
+   */
+  async function autofillDemo(sectionId) {
+    if (!checklist || checklist.demoAutofill !== true) return;
+    const scope = sectionId || 'all';
+    const section = (checklist.sections || []).find((s) => s.id === scope);
+    const target =
+      scope === 'all'
+        ? `every section of ${checklist.displayName}`
+        : `the ${section?.title || scope} section`;
+    const ok = confirm(
+      `Fill ${target} (${checklist.environment}) with demo data? Existing answers in that scope will be replaced. This is for demos only.`
+    );
+    if (!ok) return;
+    const data = await api('/api/release-checklist/demo-autofill', {
+      method: 'POST',
+      body: JSON.stringify({
+        projectId: checklist.projectId,
+        env: checklist.environment,
+        section: scope,
+        user: userName(),
+      }),
+    });
+    if (data.ok && data.checklist) {
+      checklist = data.checklist;
+      render();
+    } else {
+      alert(data.error || 'Could not autofill demo data');
+    }
+  }
+
+  els.btnDemo?.addEventListener('click', () => autofillDemo('all'));
 
   els.btnReset?.addEventListener('click', async () => {
     if (!checklist) return;

@@ -3,7 +3,9 @@
  *
  * Projects store only status/remarks/uploads under data/release-checklists/.
  * Optional per-project overrides: projects/<id>/releaseChecklist.json
- *   { "disabledSections": ["android"], "disabledItems": ["web-pay"] }
+ *   { "disabledSections": ["android"], "disabledItems": ["web-pay"], "demoAutofill": true }
+ * demoAutofill defaults to false. When true, Control Desk shows
+ * "Autofill demo data" (one section, or every section).
  */
 
 /** @typedef {'backend'|'web'|'ios'|'android'|'security'|'qa'|'golive'} SectionId */
