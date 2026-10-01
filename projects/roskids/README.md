@@ -2,8 +2,10 @@
 
 RosKids-specific **pages**, **tests**, and **data** for the shared `@mobile-automation/appium-core` framework.
 
-**App repo (no automation code):**  
+**App repo:**  
 `~/Documents/React_Native/RosKids/RoskidsReactnativeApp`
+
+Button taps use `testID`s defined in the app at `Src/constants/testIds.ts` and mirrored in `data/testIds.js`. Rebuild and reinstall the app before a booking run so those ids are on the buttons.
 
 ## Setup
 

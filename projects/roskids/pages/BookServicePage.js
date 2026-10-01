@@ -1,9 +1,12 @@
 /**
- * Book Service flow Page Object (CalendarTab steps 0–8 → payment).
- * Automation-only: uses visible text / accessibility labels — no app source changes.
+ * Book Service flow Page Object (week list → steps 1–6 → terms → summary → pay).
+ * Button taps use testIDs from the React Native app (data/testIds.js).
+ * Visible labels are only a fallback when an older build has no id yet.
  */
 const LoginPage = require('./LoginPage');
 const { testData } = require('../data/testData');
+const { TEST_IDS, choiceId } = require('../data/testIds');
+const { byTestId } = require('../helpers/elements');
 const {
   SlotSelectionHelper,
   REQUIRED_MINUTES,
@@ -33,6 +36,52 @@ class BookServicePage {
     } catch {
       await el.click();
     }
+  }
+
+  /**
+   * Tap a testID. Falls back to an exact visible label when the id is missing.
+   * @param {string} id
+   * @param {string} [fallbackLabel]
+   */
+  async #tapId(id, fallbackLabel) {
+    const el = byTestId(id);
+    if (await this.#isShown(el)) {
+      this.logStep('Tap', id);
+      await this.#tap(el);
+      return;
+    }
+    if (fallbackLabel) {
+      const byLabel = await this.#lowestByLabel(fallbackLabel);
+      if (byLabel) {
+        this.logStep('Tap', `${id} missing — using label "${fallbackLabel}"`);
+        await this.#tap(byLabel);
+        return;
+      }
+    }
+    this.fail('Tap', `testID "${id}" is not on screen. Rebuild the RosKids app.`);
+  }
+
+  /** Scroll until a testID is visible, then tap it. */
+  async #scrollAndTapId(id, fallbackLabel) {
+    for (let i = 0; i < 3; i++) {
+      try {
+        await browser.execute('mobile: swipe', { direction: 'down' });
+      } catch {
+        break;
+      }
+      await browser.pause(200);
+    }
+    for (let i = 0; i < 8; i++) {
+      const el = byTestId(id);
+      if (await this.#isShown(el)) {
+        this.logStep('Tap', id);
+        await this.#tap(el);
+        return;
+      }
+      await browser.execute('mobile: swipe', { direction: 'up' });
+      await browser.pause(250);
+    }
+    await this.#tapId(id, fallbackLabel);
   }
 
   async #byLabel(label) {
@@ -145,11 +194,17 @@ class BookServicePage {
     });
 
     // Scroll home grid if Book A Service is below the fold
-    let tile = await this.#byLabel(testData.dashboardTileBookService);
+    let tile = byTestId(TEST_IDS.home.bookService);
+    if (!(await this.#isShown(tile))) {
+      tile = await this.#byLabel(testData.dashboardTileBookService);
+    }
     for (let i = 0; i < 4 && !(await this.#isShown(tile)); i++) {
       await browser.execute('mobile: swipe', { direction: 'up' });
       await browser.pause(300);
-      tile = await this.#byLabel(testData.dashboardTileBookService);
+      tile = byTestId(TEST_IDS.home.bookService);
+      if (!(await this.#isShown(tile))) {
+        tile = await this.#byLabel(testData.dashboardTileBookService);
+      }
     }
 
     await browser.waitUntil(async () => this.#isShown(tile), {
@@ -204,6 +259,9 @@ class BookServicePage {
         if (await this.#isShown(empty)) {
           this.fail('Week selection', 'No Service Available for booking');
         }
+        if (await this.#isShown(byTestId(TEST_IDS.book.week(0)))) {
+          return true;
+        }
         const cells = await $$(
           '-ios predicate string:label CONTAINS "Close On" OR name CONTAINS "Close On"',
         );
@@ -212,10 +270,15 @@ class BookServicePage {
       { timeout: 60000, timeoutMsg: 'No bookable weeks loaded' },
     );
 
-    const cells = await $$(
-      '-ios predicate string:label CONTAINS "Close On" OR name CONTAINS "Close On"',
-    );
-    await this.#tap(cells[0]);
+    const week = byTestId(TEST_IDS.book.week(0));
+    if (await this.#isShown(week)) {
+      await this.#tap(week);
+    } else {
+      const cells = await $$(
+        '-ios predicate string:label CONTAINS "Close On" OR name CONTAINS "Close On"',
+      );
+      await this.#tap(cells[0]);
+    }
     await this.waitForStep(1);
     this.logStep('Week', 'Navigated to Step 1');
   }
@@ -238,11 +301,17 @@ class BookServicePage {
 
   async tapNext(fromStep) {
     this.logStep(`Step ${fromStep}`, 'Tapping Next');
-    const best = await this.#lowestByLabel('Next');
-    if (!best) {
-      this.fail(`Step ${fromStep}`, 'Next button not found');
-    }
-    await this.#tap(best);
+    await this.#tapId(TEST_IDS.book.next, 'Next');
+  }
+
+  /**
+   * Tap a Yes/No row by its testID prefix (`book-step2-allergy` → `…-no`).
+   * @param {string} prefix
+   * @param {'yes'|'no'} choice
+   */
+  async tapChoice(prefix, choice) {
+    const label = choice === 'yes' ? 'Yes' : 'No';
+    await this.#scrollAndTapId(choiceId(prefix, choice), label);
   }
 
   /**
@@ -272,12 +341,21 @@ class BookServicePage {
 
   async selectFirstChild() {
     this.logStep('Step 1', 'Opening child selector');
-    const dropdown = await this.#byLabel('Select your child');
-    await browser.waitUntil(async () => this.#isShown(dropdown), {
-      timeout: 20000,
-      timeoutMsg: 'Child dropdown not found',
-    });
-    await this.#tap(dropdown);
+    const dropdown = byTestId(TEST_IDS.book.step1.child);
+    await browser.waitUntil(
+      async () =>
+        (await this.#isShown(dropdown)) ||
+        (await this.#isShown(await this.#byLabel('Select your child'))),
+      {
+        timeout: 20000,
+        timeoutMsg: 'Child dropdown not found',
+      },
+    );
+    if (await this.#isShown(dropdown)) {
+      await this.#tap(dropdown);
+    } else {
+      await this.#tap(await this.#byLabel('Select your child'));
+    }
 
     await browser.waitUntil(
       async () => {
@@ -287,45 +365,69 @@ class BookServicePage {
       { timeout: 20000, timeoutMsg: 'Child list modal did not open' },
     );
 
-    const texts = await $$('-ios class chain:**/XCUIElementTypeStaticText');
-    for (const el of texts) {
-      const name = (await el.getAttribute('label').catch(() => '')) || '';
-      if (
-        name &&
-        name !== 'Select Child Name' &&
-        name !== 'Done' &&
-        name !== 'Close' &&
-        name !== '•' &&
-        !name.startsWith('Select')
-      ) {
-        await this.#tap(el);
-        break;
+    const firstChild = byTestId(TEST_IDS.book.child.option(0));
+    if (await this.#isShown(firstChild)) {
+      await this.#tap(firstChild);
+    } else {
+      const texts = await $$('-ios class chain:**/XCUIElementTypeStaticText');
+      for (const el of texts) {
+        const name = (await el.getAttribute('label').catch(() => '')) || '';
+        if (
+          name &&
+          name !== 'Select Child Name' &&
+          name !== 'Done' &&
+          name !== 'Close' &&
+          name !== '•' &&
+          !name.startsWith('Select')
+        ) {
+          await this.#tap(el);
+          break;
+        }
       }
     }
 
-    const doneBtn = await this.#byLabel('Done');
-    await browser.waitUntil(async () => this.#isShown(doneBtn), {
-      timeout: 10000,
-      timeoutMsg: 'Child modal Done not found',
-    });
-    await this.#tap(doneBtn);
+    const doneBtn = byTestId(TEST_IDS.book.child.done);
+    await browser.waitUntil(
+      async () =>
+        (await this.#isShown(doneBtn)) ||
+        (await this.#isShown(await this.#byLabel('Done'))),
+      {
+        timeout: 10000,
+        timeoutMsg: 'Child modal Done not found',
+      },
+    );
+    if (await this.#isShown(doneBtn)) {
+      await this.#tap(doneBtn);
+    } else {
+      await this.#tap(await this.#byLabel('Done'));
+    }
     await browser.pause(600);
     await this.#ensureStep1RequiredFields();
     this.logStep('Step 1', 'Child selected');
   }
 
   async #ensureStep1RequiredFields() {
+    const location = byTestId(TEST_IDS.book.step1.location);
     const locationPh = await this.#byLabel('Select School Your Child Location');
-    if (await this.#isShown(locationPh)) {
+    if ((await this.#isShown(location)) || (await this.#isShown(locationPh))) {
       this.logStep('Step 1', 'Selecting ROS Location (first option)');
-      await this.#tap(locationPh);
+      if (await this.#isShown(location)) {
+        await this.#tap(location);
+      } else {
+        await this.#tap(locationPh);
+      }
       await this.#pickFirstFromCommonPicker('Select Ros Location');
     }
 
+    const school = byTestId(TEST_IDS.book.step1.school);
     const schoolPh = await this.#byLabel('Select School Your Child Attends');
-    if (await this.#isShown(schoolPh)) {
+    if ((await this.#isShown(school)) || (await this.#isShown(schoolPh))) {
       this.logStep('Step 1', 'Selecting school (first option)');
-      await this.#tap(schoolPh);
+      if (await this.#isShown(school)) {
+        await this.#tap(school);
+      } else {
+        await this.#tap(schoolPh);
+      }
       await this.#pickFirstFromCommonPicker();
     }
   }
@@ -338,10 +440,14 @@ class BookServicePage {
         { timeout: 10000, timeoutMsg: `Picker "${titleHint}" not shown` },
       );
     }
-    const rows = await $$('-ios class chain:**/XCUIElementTypeCell');
-    if (rows.length > 0) {
-      await this.#tap(rows[0]);
+    const firstOption = byTestId(TEST_IDS.book.picker.option(0));
+    if (await this.#isShown(firstOption)) {
+      await this.#tap(firstOption);
     } else {
+      const rows = await $$('-ios class chain:**/XCUIElementTypeCell');
+      if (rows.length > 0) {
+        await this.#tap(rows[0]);
+      } else {
       const texts = await $$('-ios class chain:**/XCUIElementTypeStaticText');
       for (const el of texts) {
         const label = (await el.getAttribute('label').catch(() => '')) || '';
@@ -354,32 +460,32 @@ class BookServicePage {
           break;
         }
       }
+      }
     }
-    const done = await this.#byLabel('Done');
+    const done = byTestId(TEST_IDS.book.picker.done);
     if (await this.#isShown(done)) {
       await this.#tap(done);
+    } else {
+      const doneLabel = await this.#byLabel('Done');
+      if (await this.#isShown(doneLabel)) {
+        await this.#tap(doneLabel);
+      }
     }
     await browser.pause(400);
   }
 
+  /**
+   * Step 3 Breakfast Club — Yes, then ~2 hours of morning slots (screenshots).
+   */
   async completeMorningSlots() {
-    this.logStep('Step 3', 'Selecting Yes for morning childcare');
-    await this.tapYesNo(
-      'yes',
-      'Do you require childcare in the mornings?',
-    );
+    this.logStep('Step 3', 'Selecting Yes for breakfast club');
+    await this.tapChoice(TEST_IDS.book.step3.morning, 'yes');
     await browser.pause(400);
-
-    let openBtn = await this.#byLabel('Select Slot');
-    if (!(await this.#isShown(openBtn))) {
-      openBtn = await this.#byLabel('Update');
-    }
-    await browser.waitUntil(async () => this.#isShown(openBtn), {
-      timeout: 15000,
-      timeoutMsg: 'Select Slot / Update button not found on Step 3',
-    });
-    this.logStep('Step 3', 'Opening slot dialog');
-    await this.#tap(openBtn);
+    await this.#openSlotDialog(
+      TEST_IDS.book.step3.selectSlot,
+      TEST_IDS.book.step3.updateSlot,
+      'Step 3',
+    );
 
     const results = await this.slots.selectTwoHoursForAllWeekdays(
       REQUIRED_MINUTES,
@@ -395,30 +501,120 @@ class BookServicePage {
       )}`,
     );
 
+    await this.#waitForSlotDialogToClose('Step 3');
+    this.logStep('Step 3', 'Slots reflected on Step 3');
+  }
+
+  /**
+   * Open Select Slot, or Update when times are already filled.
+   * @param {string} selectId
+   * @param {string} updateId
+   * @param {string} stepLabel
+   */
+  async #openSlotDialog(selectId, updateId, stepLabel) {
+    const selectBtn = byTestId(selectId);
+    const updateBtn = byTestId(updateId);
+    let openBtn = selectBtn;
     await browser.waitUntil(
       async () => {
-        const dialogTitle = await this.#byLabel('Select Slot');
-        const selected = await this.#byLabelContains('Selected Slots');
+        if (await this.#isShown(updateBtn)) {
+          openBtn = updateBtn;
+          return true;
+        }
+        if (await this.#isShown(selectBtn)) {
+          openBtn = selectBtn;
+          return true;
+        }
+        const byLabel = await this.#byLabel('Select Slot');
+        const updateLabel = await this.#byLabel('Update');
+        if (await this.#isShown(updateLabel)) {
+          openBtn = updateLabel;
+          return true;
+        }
+        if (await this.#isShown(byLabel)) {
+          openBtn = byLabel;
+          return true;
+        }
+        return false;
+      },
+      {
+        timeout: 15000,
+        timeoutMsg: `${stepLabel}: Select Slot / Update button not found`,
+      },
+    );
+    this.logStep(stepLabel, 'Opening slot dialog');
+    await this.#tap(openBtn);
+  }
+
+  /**
+   * Step 5 Afterschool Club — Yes, then afternoon slots (screenshots show times).
+   */
+  async completeAfternoonSlots() {
+    this.logStep('Step 5', 'Selecting Yes for afterschool club');
+    await this.tapChoice(TEST_IDS.book.step5.afternoon, 'yes');
+    await browser.pause(400);
+    await this.#openSlotDialog(
+      TEST_IDS.book.step5.selectSlot,
+      TEST_IDS.book.step5.updateSlot,
+      'Step 5',
+    );
+
+    const results = await this.slots.selectTwoHoursForAllWeekdays(
+      REQUIRED_MINUTES,
+    );
+    this.logStep(
+      'Step 5',
+      `Slot selection finished: ${JSON.stringify(
+        results.map(r => ({
+          day: r.day,
+          status: r.status,
+          mins: r.totalMinutes,
+        })),
+      )}`,
+    );
+    await this.#waitForSlotDialogToClose('Step 5');
+    this.logStep('Step 5', 'Slots reflected on Step 5');
+  }
+
+  async #waitForSlotDialogToClose(stepLabel) {
+    await browser.waitUntil(
+      async () => {
+        const slotNext = byTestId(TEST_IDS.book.slot.next);
+        if (await this.#isShown(slotNext)) {
+          return false;
+        }
         const available = await this.#byLabel('Available');
-        // Dialog closed when legend gone, or Selected Slots shown on form
-        const dialogOpen =
-          (await this.#isShown(dialogTitle)) && (await this.#isShown(available));
-        return !dialogOpen || (await this.#isShown(selected));
+        const selected = await this.#byLabelContains('Selected Slots');
+        return !(await this.#isShown(available)) || (await this.#isShown(selected));
       },
       {
         timeout: 60000,
         interval: 1000,
-        timeoutMsg:
-          'Book Service automation failed at Step 3: slot dialog did not close after Done (hold API?)',
+        timeoutMsg: `${stepLabel}: slot dialog did not close after Done`,
       },
     );
-    this.logStep('Step 3', 'Slots reflected on Step 3');
   }
 
-  async selectAfternoonChildcareNo() {
-    this.logStep('Step 5', 'Selecting No for afternoon childcare');
-    await this.tapYesNo('no', 'Do you require afternoon childcare?');
-    await browser.pause(300);
+  /** Step 4 Morning Transport — both answers No, matching the screenshot. */
+  async confirmMorningTransportNo() {
+    this.logStep('Step 4', 'Confirming morning transport = No');
+    await this.tapChoice(TEST_IDS.book.step4.homeTransport, 'no');
+    await this.tapChoice(TEST_IDS.book.step4.dropSchool, 'no');
+    await this.tapChoice(TEST_IDS.book.step4.arklowTransport, 'no');
+    await this.tapChoice(TEST_IDS.book.step4.arklowDrop, 'no');
+  }
+
+  /** Step 6 Afternoon Transport — both answers No, matching the screenshot. */
+  async confirmAfternoonTransportNo() {
+    this.logStep('Step 6', 'Confirming afternoon transport = No');
+    await this.tapChoice(TEST_IDS.book.step6.afternoonTransport, 'no');
+    await this.tapChoice(TEST_IDS.book.step6.arklow, 'no');
+  }
+
+  /** Step 2 Allergy — No, matching the screenshot. */
+  async confirmAllergyNo() {
+    this.logStep('Step 2', 'Selecting No for allergies');
+    await this.tapChoice(TEST_IDS.book.step2.allergy, 'no');
   }
 
   async completeStep7Terms() {
@@ -432,11 +628,14 @@ class BookServicePage {
       this.logStep('Step 7', 'Transport No control not found — continuing');
     }
 
-    await this.scrollToText('Yes. I have entered all details correctly');
-    await this.#tapCheckboxNearText('Yes. I have entered all details correctly');
-
-    await this.scrollToText('I agree to the privacy policy');
-    await this.#tapCheckboxNearText('I agree to the privacy policy');
+    await this.#scrollAndTapId(
+      TEST_IDS.book.step7.detailsChecked,
+      'Yes. I have entered all details correctly',
+    );
+    await this.#scrollAndTapId(
+      TEST_IDS.book.step7.consent,
+      'I agree to the privacy policy',
+    );
 
     this.logStep('Step 7', 'Both term checkboxes tapped');
   }
@@ -475,15 +674,9 @@ class BookServicePage {
       { timeout: 45000, timeoutMsg: 'Summary page not displayed' },
     );
 
-    await this.scrollToText('I Accept the');
-    await this.#tapCheckboxNearText('I Accept the');
+    await this.#scrollAndTapId(TEST_IDS.book.summary.terms, 'I Accept the');
     this.logStep('Summary', 'Accepted Terms');
-
-    const submit = await this.#lowestByLabel('Submit');
-    if (!submit) {
-      this.fail('Summary', 'Submit button not found');
-    }
-    await this.#tap(submit);
+    await this.#tapId(TEST_IDS.book.summary.submit, 'Submit');
     this.logStep('Summary', 'Submit tapped');
   }
 
@@ -500,18 +693,19 @@ class BookServicePage {
       },
     );
 
-    const noBtn = await this.#byLabel('No');
-    await this.#tap(noBtn);
+    await this.#tapId(TEST_IDS.book.anotherChildNo, 'No');
     this.logStep('Popup', 'Tapped No on add-another-child');
 
     await browser.waitUntil(
-      async () => this.#isShown(await this.#byLabel('Continue')),
+      async () =>
+        (await this.#isShown(byTestId(TEST_IDS.book.warningContinue))) ||
+        (await this.#isShown(await this.#byLabel('Continue'))),
       {
         timeout: 20000,
         timeoutMsg: 'Data Loss Warning Continue not shown',
       },
     );
-    await this.#tap(await this.#byLabel('Continue'));
+    await this.#tapId(TEST_IDS.book.warningContinue, 'Continue');
     this.logStep('Popup', 'Tapped Continue');
   }
 
@@ -529,7 +723,7 @@ class BookServicePage {
       },
     );
 
-    await this.#tap(await this.#byLabel('Pay Now'));
+    await this.#tapId(TEST_IDS.book.payNow, 'Pay Now');
     this.logStep('Payment', 'Pay Now tapped');
 
     await browser.waitUntil(

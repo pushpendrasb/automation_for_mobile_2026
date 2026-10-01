@@ -1,10 +1,32 @@
 /**
- * Slot selection helpers for Book Service Step 3 dialog.
- * Uses visible slot labels only (no app testID changes required).
+ * Slot selection helpers for the Select Slot dialog (breakfast + afterschool).
+ * Chips are tapped by testID `book-slot-item-{index}-{h}-{mm}-{h}-{mm}`.
+ * Visible time labels are the fallback when an older build has no ids.
  * Selects a contiguous available range totaling REQUIRED_MINUTES (default 120).
  */
+const { TEST_IDS } = require('../data/testIds');
+const { byTestId, allByTestIdPrefix, readTestId } = require('./elements');
+
 const REQUIRED_MINUTES = Number(process.env.BOOK_SERVICE_SLOT_MINUTES || 120);
 const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
+
+/**
+ * `book-slot-item-12-6-00-6-05` → { index: 12, label: "6:00 - 6:05" }.
+ * @param {string} id
+ * @returns {{index:number,label:string}|null}
+ */
+function parseSlotTestId(id) {
+  const match = String(id).match(
+    /book-slot-item-(\d+)-(\d{1,2})-(\d{2})-(\d{1,2})-(\d{2})/,
+  );
+  if (!match) {
+    return null;
+  }
+  return {
+    index: Number(match[1]),
+    label: `${Number(match[2])}:${match[3]} - ${Number(match[4])}:${match[5]}`,
+  };
+}
 
 /**
  * Parse "H:mm - H:mm" into duration minutes.
@@ -75,13 +97,20 @@ class SlotSelectionHelper {
   async waitForDialog(timeout = 30000) {
     await browser.waitUntil(
       async () => {
+        const close = byTestId(TEST_IDS.book.slot.close);
+        const next = byTestId(TEST_IDS.book.slot.next);
         const title = await $(
           '-ios predicate string:label == "Select Slot" OR name == "Select Slot"',
         );
         const legend = await $(
           '-ios predicate string:label == "Available" OR name == "Available"',
         );
-        return (await this.#isShown(title)) || (await this.#isShown(legend));
+        return (
+          (await this.#isShown(close)) ||
+          (await this.#isShown(next)) ||
+          (await this.#isShown(title)) ||
+          (await this.#isShown(legend))
+        );
       },
       {
         timeout,
@@ -96,22 +125,31 @@ class SlotSelectionHelper {
    * Collect slot cells by visible time-range labels (e.g. "8:00 - 8:05").
    */
   async #collectVisibleSlots() {
-    const texts = await $$(
-      '-ios predicate string:label CONTAINS " - " OR name CONTAINS " - "',
-    );
+    const byId = await allByTestIdPrefix('book-slot-item-');
+    const texts =
+      byId.length > 0
+        ? byId
+        : await $$(
+            '-ios predicate string:label CONTAINS " - " OR name CONTAINS " - "',
+          );
     const results = [];
-    let index = 0;
+    let fallbackIndex = 0;
     for (const el of texts) {
       if (!(await this.#isShown(el))) {
         continue;
       }
+      const rawId = await readTestId(el);
+      const fromId = parseSlotTestId(rawId);
       const label =
+        fromId?.label ||
         (await el.getAttribute('label').catch(() => null)) ||
         (await el.getAttribute('name').catch(() => null)) ||
         '';
       if (!parseSlotDurationMinutes(label)) {
         continue;
       }
+      const index = fromId ? fromId.index : fallbackIndex;
+      fallbackIndex += 1;
       let isDisabled = false;
       try {
         isDisabled = !(await el.isEnabled());
@@ -139,8 +177,8 @@ class SlotSelectionHelper {
         disabled: Boolean(isDisabled),
         el,
       });
-      index += 1;
     }
+    results.sort((a, b) => a.index - b.index);
     return results;
   }
 
@@ -237,17 +275,25 @@ class SlotSelectionHelper {
     return summary;
   }
 
+  /**
+   * Footer button keeps testID `book-slot-next` on every day.
+   * The visible title switches to Done on Friday.
+   */
   async tapDialogNextOrDone(isLastDay) {
+    const byId = byTestId(TEST_IDS.book.slot.next);
+    if (await this.#isShown(byId)) {
+      await this.#tap(byId);
+      return;
+    }
     const title = isLastDay ? 'Done' : 'Next';
     const candidates = await $$(
       `-ios predicate string:label == "${title}" OR name == "${title}"`,
     );
     if (candidates.length === 0) {
       throw new Error(
-        `Book Service automation failed at Step 3: dialog ${title} button not found`,
+        `Book Service automation failed at slots: dialog ${title} button not found`,
       );
     }
-    // Prefer lowest on screen (dialog footer)
     let best = candidates[0];
     let maxY = -1;
     for (const el of candidates) {
@@ -282,4 +328,5 @@ module.exports = {
   REQUIRED_MINUTES,
   WEEKDAYS,
   parseSlotDurationMinutes,
+  parseSlotTestId,
 };
